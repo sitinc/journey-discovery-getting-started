@@ -93,14 +93,17 @@ class OpenAiWrapProxy(ABC):
 
     @abstractmethod
     def completions_backoff(self, **kwargs):
+        """Wrap openai_client.chat.completions.create with @retry_with_exponential_backoff."""
         pass
 
     @abstractmethod
     def embeddings_backoff(self, **kwargs):
+        """Wrap openai_client.embeddings.create with @retry_with_exponential_backoff."""
         pass
 
     @abstractmethod
     def execute(self, **kwargs):
+        """Submit a command for execution."""
         pass
 
 
@@ -226,7 +229,7 @@ class OpenAiWrap(OpenAiWrapProxy):
 
     def execute(self, cmd: OpenAiCommand, retries=0) -> OpenAiCommand:
         """
-        Submit a list of utterances for embeddings creation.
+        Submit a command for execution.
         :param cmd: the OpenAiCommand instance.
         :param retries: The recursive retries counter.  Do not set.
         :return: The completed command instance.
