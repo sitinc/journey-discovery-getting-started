@@ -161,8 +161,38 @@ class OpenAiCommand(ABC):
             'prompt_tokens': self.prompt_tokens,
             'total_tokens': self.total_tokens,
             'exec_time': self.exec_time,
-            'content': self.result,
+            # 'content': self.result,
         }
+
+    def __str__(self):
+        return (f"OpenAiCommand(session_id={self.session_id}" +
+                f", cmd_name={self.cmd_name}" +
+                f", exec_time={self.exec_time}" +
+                f", openai_id={self.openai_id}" +
+                f", openai_finish_reason={self.openai_finish_reason}" +
+                f", openai_logprobs={self.openai_logprobs}" +
+                f", openai_system_fingerprint={self.openai_system_fingerprint}" +
+                f", completion_tokens={self.completion_tokens}" +
+                f", prompt_tokens={self.prompt_tokens}" +
+                f", total_tokens={self.total_tokens}" +
+                f", response={self.response}" +
+                f", result={self.result}" +
+                ")")
+
+    def __repr__(self):
+        return (f"OpenAiCommand(session_id={self.session_id!r}" +
+                f", cmd_name={self.cmd_name!r}" +
+                f", exec_time={self.exec_time!r}" +
+                f", openai_id={self.openai_id!r}" +
+                f", openai_finish_reason={self.openai_finish_reason!r}" +
+                f", openai_logprobs={self.openai_logprobs!r}" +
+                f", openai_system_fingerprint={self.openai_system_fingerprint!r}" +
+                f", completion_tokens={self.completion_tokens!r}" +
+                f", prompt_tokens={self.prompt_tokens!r}" +
+                f", total_tokens={self.total_tokens!r}" +
+                f", response={self.response!r}" +
+                f", result={self.result!r}" +
+                ")")
 
 
 class OpenAiWrap(OpenAiWrapProxy):
@@ -205,7 +235,8 @@ class OpenAiWrap(OpenAiWrapProxy):
             raise Exception(f'{cmd.session_id} | {cmd.cmd_name} | Failed after {self.max_retries} attempts.')
 
         try:
-            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Input: {cmd.input_key()}")
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Request: {cmd}")
+            log.info(f"{cmd.session_id} | {cmd.cmd_name} | Input: {cmd.input_key()}")
 
             start_time = time.time()
             cmd_result: OpenAiCommand = cmd.run(self)
@@ -223,9 +254,12 @@ class OpenAiWrap(OpenAiWrapProxy):
             cmd_result.prompt_tokens = cmd_result.response.usage.prompt_tokens
             cmd_result.total_tokens = cmd_result.response.usage.total_tokens
 
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Response: {cmd_result}")
+
             del cmd_result.response
 
-            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.output_key()}")
+            log.info(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.output_key()}")
+
             return cmd_result
         except OpenAIError as e:  # Handle OpenAI-specific errors
             retries = retries + 1
@@ -317,8 +351,8 @@ class CreateCompletions(OpenAiCommand):
 
     def input_key(self):
         return {
-            'user_prompt': self.user_prompt,
-            'sys_prompt': self.sys_prompt,
+            'user_prompt': len(self.user_prompt),
+            'sys_prompt': len(self.sys_prompt),
             'model': self.model
         }
 
@@ -336,7 +370,20 @@ class CreateCompletions(OpenAiCommand):
             messages=final_messages,
             model=self.model,
         )
-        log.debug(f"{self.session_id} | {self.cmd_name} | Response: {response}")
         self.response = response
         self.result = response.choices[0].message.content
         return self
+
+    def __str__(self):
+        return (f"CreateCompletions(super={super().__str__()}" +
+                f", model={self.model}" +
+                f", sys_prompt={self.sys_prompt}" +
+                f", user_prompt={self.user_prompt}" +
+                ")")
+
+    def __repr__(self):
+        return (f"CreateCompletions(super={super().__repr__()}" +
+                f", model={self.model!r}" +
+                f", sys_prompt={self.sys_prompt!r}" +
+                f", user_prompt={self.user_prompt!r}" +
+                ")")
