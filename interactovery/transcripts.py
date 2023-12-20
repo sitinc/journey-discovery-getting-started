@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import codecs
+import os
 
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.utils import Utils
@@ -75,7 +76,7 @@ class Transcripts:
                               session_id: str = None,
                               quantity: int = 5,
                               model: str = "gpt-4-1106-preview",
-                              output_dir: str = "."
+                              output_dir: str = "output"
                               ) -> None:
         """
         Generate a series of agent transcripts and output them to files.
@@ -95,5 +96,6 @@ class Transcripts:
                 model=model,
                 user_prompt=user_prompt,
             )
+            os.makedirs(output_dir, exist_ok=True)
             with codecs.open(f'{output_dir}/transcript{i}.txt', 'w', 'utf-8') as f:
                 f.write(gen_transcript)
