@@ -219,9 +219,11 @@ class OpenAiWrap(OpenAiWrapProxy):
             cmd_result.openai_finish_reason = choice_entry.finish_reason
             cmd_result.openai_logprobs = choice_entry.logprobs
             cmd_result.openai_system_fingerprint = cmd_result.response.system_fingerprint
-            cmd_result.completion_tokens = cmd_result.response.completion_tokens
-            cmd_result.prompt_tokens = cmd_result.response.prompt_tokens
-            cmd_result.total_tokens = cmd_result.response.total_tokens
+            cmd_result.completion_tokens = cmd_result.response.usage.completion_tokens
+            cmd_result.prompt_tokens = cmd_result.response.usage.prompt_tokens
+            cmd_result.total_tokens = cmd_result.response.usage.total_tokens
+
+            del cmd_result.response
 
             log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.output_key()}")
             return cmd_result
