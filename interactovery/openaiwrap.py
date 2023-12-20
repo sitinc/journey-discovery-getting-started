@@ -93,12 +93,12 @@ class OpenAiWrapProxy(ABC):
 
     @abstractmethod
     def completions_backoff(self, **kwargs):
-        """Wrap openai_client.chat.completions.create with @retry_with_exponential_backoff."""
+        """Wrap client.chat.completions.create with @retry_with_exponential_backoff."""
         pass
 
     @abstractmethod
     def embeddings_backoff(self, **kwargs):
-        """Wrap openai_client.embeddings.create with @retry_with_exponential_backoff."""
+        """Wrap client.embeddings.create with @retry_with_exponential_backoff."""
         pass
 
     @abstractmethod
@@ -212,20 +212,20 @@ class OpenAiWrap(OpenAiWrapProxy):
         self.org_id = org_id
         self.api_key = api_key
         self.max_retries = max_retries
-        self.openai_client = OpenAI(
+        self.client = OpenAI(
             organization=org_id,
             api_key=api_key,
         )
 
     @retry_with_exponential_backoff
     def completions_backoff(self, **kwargs):
-        """Wrap openai_client.chat.completions.create with @retry_with_exponential_backoff."""
-        return self.openai_client.chat.completions.create(**kwargs)
+        """Wrap client.chat.completions.create with @retry_with_exponential_backoff."""
+        return self.client.chat.completions.create(**kwargs)
 
     @retry_with_exponential_backoff
     def embeddings_backoff(self, **kwargs):
-        """Wrap openai_client.embeddings.create with @retry_with_exponential_backoff."""
-        return self.openai_client.embeddings.create(**kwargs)
+        """Wrap client.embeddings.create with @retry_with_exponential_backoff."""
+        return self.client.embeddings.create(**kwargs)
 
     def execute(self, cmd: OpenAiCommand, retries=0) -> OpenAiCommand:
         """
