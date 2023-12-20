@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import codecs
+import os
 
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.utils import Utils
@@ -49,7 +50,7 @@ class Transcripts:
                              *,
                              user_prompt: str,
                              model: str,
-                             session_id: str = "unset"
+                             session_id: str = None
                              ):
         """
         Generate an agent transcript.
@@ -58,19 +59,24 @@ class Transcripts:
         :param session_id: The session ID.
         :return: the result transcript.
         """
-        if session_id == "unset":
+        if session_id is None:
             session_id = Utils.new_session_id()
 
-        cmd = CreateCompletions(session_id, user_prompt, model, sys_prompt_gen_transcript)
+        cmd = CreateCompletions(
+            session_id=session_id,
+            model=model,
+            sys_prompt=sys_prompt_gen_transcript,
+            user_prompt=user_prompt,
+        )
         return self.openai.execute(cmd).result
 
     def gen_agent_transcripts(self,
                               *,
                               user_prompt: str,
-                              session_id: str = "unset",
+                              session_id: str = None,
                               quantity: int = 5,
                               model: str = "gpt-4-1106-preview",
-                              output_dir: str = "."
+                              output_dir: str = "output"
                               ) -> None:
         """
         Generate a series of agent transcripts and output them to files.
@@ -85,10 +91,16 @@ class Transcripts:
             raise Exception(f"max quantity is {self.max_transcripts} unless you set max_transcripts via constructor")
 
         for i in range(0, quantity):
+            final_file_name = f'{output_dir}/transcript{i}.txt'
+            os.makedirs(output_dir, exist_ok=True)
+
+            if os.path.exists(final_file_name):
+                continue
+
             gen_transcript = self.gen_agent_transcript(
+                session_id=session_id,
                 model=model,
                 user_prompt=user_prompt,
-                session_id=session_id
             )
-            with codecs.open(f'{output_dir}/transcript{i}.txt', 'w', 'utf-8') as f:
+            with codecs.open(final_file_name, 'w', 'utf-8') as f:
                 f.write(gen_transcript)
