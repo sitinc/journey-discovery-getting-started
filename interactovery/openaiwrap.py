@@ -1,0 +1,290 @@
+# MIT License
+#
+# Copyright (c) 2023 Smart Interactive Transformations Inc.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from abc import ABC, abstractmethod
+
+import openai
+from openai import OpenAI, OpenAIError
+from requests import RequestException
+
+from interactovery.utils import Utils
+
+import random
+import time
+
+import logging
+
+log = logging.getLogger('openAiLogger')
+
+
+# Implement exponential backoff as per:
+# https://platform.openai.com/docs/guides/rate-limits/error-mitigation?context=tier-two
+
+# define a retry decorator
+def retry_with_exponential_backoff(
+        func,
+        initial_delay: float = 1,
+        exponential_base: float = 2,
+        jitter: bool = True,
+        max_retries: int = 10,
+        errors: tuple = (openai.RateLimitError,),
+):
+    """Retry a function with exponential backoff."""
+
+    def wrapper(*args, **kwargs):
+        # Initialize variables
+        num_retries = 0
+        delay = initial_delay
+
+        # Loop until a successful response or max_retries is hit or an exception is raised
+        while True:
+            try:
+                return func(*args, **kwargs)
+
+            # Retry on specific errors
+            except errors as e:
+                log.error(f"OpenAI API rate-limit error: {e}")
+
+                # Increment retries
+                num_retries += 1
+
+                # Check if max retries has been reached
+                if num_retries > max_retries:
+                    raise Exception(
+                        f"Maximum number of retries ({max_retries}) exceeded."
+                    )
+
+                # Increment the delay
+                delay *= exponential_base * (1 + jitter * random.random())
+
+                # Sleep for the delay
+                time.sleep(delay)
+
+            # Raise exceptions for any errors not specified
+            except Exception as e:
+                raise e
+
+    return wrapper
+
+
+# Define an interface (abstract base class) to make mocking easier.
+class OpenAiWrapProxy(ABC):
+    """
+    Define OpenAiWrap proxy interface to support passing OpenAiWrap into OpenAiCommand.
+    """
+
+    @abstractmethod
+    def completions_backoff(self, **kwargs):
+        pass
+
+    @abstractmethod
+    def embeddings_backoff(self, **kwargs):
+        pass
+
+    @abstractmethod
+    def execute(self, **kwargs):
+        pass
+
+
+class OpenAiCommand(ABC):
+    """
+    Abstract command object for implementing OpenAI API commands.
+    """
+
+    def __init__(self, session_id: str, cmd_name: str):
+        """
+        Construct a new instance.
+
+        :param session_id: The session_id.
+        """
+
+        if session_id == "unset":
+            session_id = Utils.new_session_id()
+
+        self.session_id = session_id
+        self.cmd_name = cmd_name
+        self.result = None
+
+    @abstractmethod
+    def run(self, client: OpenAiWrapProxy):
+        """
+        Abstract method for executing command logic.
+        """
+        pass
+
+    @abstractmethod
+    def input_key(self):
+        """
+        Abstract method retrieving the command input key.
+        """
+        pass
+
+
+class OpenAiWrap(OpenAiWrapProxy):
+    """OpenAI API Wrapper class."""
+
+    def __init__(self, org_id: str, api_key: str, max_retries=3):
+        """
+        Construct a new instance.
+
+        :param org_id: The OpenAI API organization ID.
+        :param api_key: The OpenAI API key.
+        :param max_retries: The maximum number of retries due to errors not related to rate limiting.  Default is 3.
+        """
+        self.org_id = org_id
+        self.api_key = api_key
+        self.max_retries = max_retries
+        self.openai_client = OpenAI(
+            organization=org_id,
+            api_key=api_key,
+        )
+
+    @retry_with_exponential_backoff
+    def completions_backoff(self, **kwargs):
+        """Wrap openai_client.chat.completions.create with @retry_with_exponential_backoff."""
+        return self.openai_client.chat.completions.create(**kwargs)
+
+    @retry_with_exponential_backoff
+    def embeddings_backoff(self, **kwargs):
+        """Wrap openai_client.embeddings.create with @retry_with_exponential_backoff."""
+        return self.openai_client.embeddings.create(**kwargs)
+
+    def execute(self, cmd: OpenAiCommand, retries=0) -> OpenAiCommand:
+        """
+        Submit a list of utterances for embeddings creation.
+        :param cmd: the OpenAiCommand instance.
+        :param retries: The recursive retries counter.  Do not set.
+        :return: The completed command instance.
+        """
+        if retries >= self.max_retries:
+            raise Exception(f'{cmd.session_id} | {cmd.cmd_name} | Failed after {self.max_retries} attempts.')
+
+        try:
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Input: {cmd.input_key()}")
+            cmd_result = cmd.run(self)
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.result}")
+            return cmd_result
+        except OpenAIError as e:  # Handle OpenAI-specific errors
+            retries = retries + 1
+            log.error(f"{cmd.session_id} | {cmd.cmd_name} | Attempt #{retries} | OpenAI API error: {e}")
+            return self.execute(cmd, retries)
+        except RequestException as e:  # Handle network-related errors
+            retries = retries + 1
+            log.error(f"{cmd.session_id} | {cmd.cmd_name} | Attempt #{retries} | Request error: {e}")
+            return self.execute(cmd, retries)
+        except Exception as e:  # Handle other unexpected errors
+            retries = retries + 1
+            log.error(f"{cmd.session_id} | {cmd.cmd_name} | Attempt #{retries} | An unexpected error occurred: {e}")
+            return self.execute(cmd, retries)
+
+
+class CreateEmbeddings(OpenAiCommand):
+    """
+    Command object for OpenAI create embeddings requests.
+    """
+
+    def __init__(self, session_id: str, utterances: str, engine: str = "text-similarity-babbage-001"):
+        """
+        Construct a new instance.
+        :param session_id: The session ID.
+        :param utterances: The utterances.
+        :param engine: The embeddings engine.  Default is "text-similarity-babbage-001".
+        """
+        super().__init__(
+            session_id,
+            'CreateEmbeddings'
+        )
+        if utterances is None:
+            raise Exception("utterances is required")
+
+        self.utterances = utterances
+        self.engine = engine
+
+    def input_key(self):
+        return {
+            'engine': self.engine,
+            'utterances': self.utterances
+        }
+
+    def run(self, client: OpenAiWrap) -> OpenAiCommand:
+        response = client.embeddings_backoff(
+            input=self.utterances,
+            engine=self.engine
+        )
+        log.debug(f"{self.session_id} | {self.cmd_name} | Response: {response}")
+        self.result = [embedding['embedding'] for embedding in response['data']]
+        return self
+
+
+class CreateCompletions(OpenAiCommand):
+    """
+    Command object for OpenAI chat completion requests.
+    """
+
+    def __init__(self,
+                 session_id: str,
+                 user_prompt: str = None,
+                 model: str = "gpt-4-1106-preview",
+                 sys_prompt: str = "You are a helpful assistant"
+                 ):
+        """
+        Construct a new instance.
+        :param session_id: The session ID.
+        :param user_prompt: The chat completion user prompt.
+        :param sys_prompt: The chat completion system prompt.  The default is "You are a helpful assistant".
+        :param model: The chat completion model.  The default is "gpt-4-1106-preview".
+        """
+        super().__init__(
+            session_id,
+            'CreateCompletions'
+        )
+        if user_prompt is None:
+            raise Exception("user_prompt is required")
+
+        self.user_prompt = user_prompt
+        self.sys_prompt = sys_prompt
+        self.model = model
+
+    def input_key(self):
+        return {
+            'user_prompt': self.user_prompt,
+            'sys_prompt': self.sys_prompt,
+            'model': self.model
+        }
+
+    def run(self, client: OpenAiWrap) -> OpenAiCommand:
+        """
+        Execute the command logic.
+        :param client: The OpenAiWrap instance.
+        :return: the completed command instance.
+        """
+        final_messages = [
+            {"role": "system", "content": self.sys_prompt},
+            {"role": "user", "content": self.user_prompt}
+        ]
+        chat_completion = client.completions_backoff(
+            messages=final_messages,
+            model=self.model,
+        )
+        log.debug(f"{self.session_id} | {self.cmd_name} | Response: {chat_completion}")
+        self.result = chat_completion.choices[0].message.content
+        return self
