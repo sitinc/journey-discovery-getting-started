@@ -110,24 +110,36 @@ class OpenAiCommand(ABC):
     Abstract command object for implementing OpenAI API commands.
     """
 
-    def __init__(self, session_id: str, cmd_name: str):
+    def __init__(self, session_id: str = None, cmd_name: str = None):
         """
         Construct a new instance.
-
         :param session_id: The session_id.
         """
 
-        if session_id == "unset":
+        if session_id is None:
             session_id = Utils.new_session_id()
 
-        self.session_id = session_id
-        self.cmd_name = cmd_name
+        if cmd_name is None:
+            raise Exception('cmd_name is required')
+
+        self.session_id: str = session_id
+        self.cmd_name: str = cmd_name
+        self.exec_time: float | None = None
+        self.openai_id: str | None = None
+        self.openai_finish_reason: str | None = None
+        self.openai_logprobs = None
+        self.openai_system_fingerprint: str | None  = None
+        self.completion_tokens: int | None = None
+        self.prompt_tokens: int | None = None
+        self.total_tokens: int | None = None
+        self.response = None
         self.result = None
 
     @abstractmethod
     def run(self, client: OpenAiWrapProxy):
         """
         Abstract method for executing command logic.
+        :param client: The OpenAI API client.
         """
         pass
 
@@ -137,6 +149,21 @@ class OpenAiCommand(ABC):
         Abstract method retrieving the command input key.
         """
         pass
+
+    def output_key(self):
+        """
+        Implement output_key for base class.
+        """
+        return {
+            'id': self.openai_id,
+            'system_fingerprint': self.openai_system_fingerprint,
+            'finish_reason': self.openai_finish_reason,
+            'completion_tokens': self.completion_tokens,
+            'prompt_tokens': self.prompt_tokens,
+            'total_tokens': self.total_tokens,
+            'exec_time': self.exec_time,
+            'content': self.result,
+        }
 
 
 class OpenAiWrap(OpenAiWrapProxy):
@@ -180,8 +207,24 @@ class OpenAiWrap(OpenAiWrapProxy):
 
         try:
             log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Input: {cmd.input_key()}")
-            cmd_result = cmd.run(self)
-            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.result}")
+
+            start_time = time.time()
+            cmd_result: OpenAiCommand = cmd.run(self)
+            end_time = time.time()
+            exec_time = end_time - start_time
+            cmd_result.exec_time = exec_time
+
+            choice_entry = cmd_result.response.choices[0]
+
+            cmd_result.openai_id = cmd_result.response.id
+            cmd_result.openai_finish_reason = choice_entry.finish_reason
+            cmd_result.openai_logprobs = choice_entry.logprobs
+            cmd_result.openai_system_fingerprint = cmd_result.response.system_fingerprint
+            cmd_result.completion_tokens = cmd_result.response.completion_tokens
+            cmd_result.prompt_tokens = cmd_result.response.prompt_tokens
+            cmd_result.total_tokens = cmd_result.response.total_tokens
+
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.output_key()}")
             return cmd_result
         except OpenAIError as e:  # Handle OpenAI-specific errors
             retries = retries + 1
@@ -231,6 +274,7 @@ class CreateEmbeddings(OpenAiCommand):
             engine=self.engine
         )
         log.debug(f"{self.session_id} | {self.cmd_name} | Response: {response}")
+        self.response = response
         self.result = [embedding['embedding'] for embedding in response['data']]
         return self
 
@@ -281,10 +325,11 @@ class CreateCompletions(OpenAiCommand):
             {"role": "system", "content": self.sys_prompt},
             {"role": "user", "content": self.user_prompt}
         ]
-        chat_completion = client.completions_backoff(
+        response = client.completions_backoff(
             messages=final_messages,
             model=self.model,
         )
-        log.debug(f"{self.session_id} | {self.cmd_name} | Response: {chat_completion}")
-        self.result = chat_completion.choices[0].message.content
+        log.debug(f"{self.session_id} | {self.cmd_name} | Response: {response}")
+        self.response = response
+        self.result = response.choices[0].message.content
         return self
