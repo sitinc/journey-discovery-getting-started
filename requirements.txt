@@ -1,0 +1,12 @@
+sentence-transformers
+hdbscan
+scikit-learn
+umap-learn
+pandas
+matplotlib
+seaborn
+numpy
+openai
+python-dotenv
+requests
+spacy
