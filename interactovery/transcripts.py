@@ -91,11 +91,16 @@ class Transcripts:
             raise Exception(f"max quantity is {self.max_transcripts} unless you set max_transcripts via constructor")
 
         for i in range(0, quantity):
+            final_file_name = f'{output_dir}/transcript{i}.txt'
+            os.makedirs(output_dir, exist_ok=True)
+
+            if os.path.exists(final_file_name):
+                continue
+
             gen_transcript = self.gen_agent_transcript(
                 session_id=session_id,
                 model=model,
                 user_prompt=user_prompt,
             )
-            os.makedirs(output_dir, exist_ok=True)
-            with codecs.open(f'{output_dir}/transcript{i}.txt', 'w', 'utf-8') as f:
+            with codecs.open(final_file_name, 'w', 'utf-8') as f:
                 f.write(gen_transcript)
