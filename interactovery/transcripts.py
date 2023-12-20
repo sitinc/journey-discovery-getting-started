@@ -20,8 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import pandas as pd
 import codecs
 import os
+import re
 
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.utils import Utils
@@ -104,3 +106,89 @@ class Transcripts:
             )
             with codecs.open(final_file_name, 'w', 'utf-8') as f:
                 f.write(gen_transcript)
+
+    @staticmethod
+    def concat_transcripts(dir_name: str, file_name: str):
+        for x in range(0, 500):
+            ts_file_name = f"{dir_name}/transcript{x}.txt"
+            combined_name = f"{dir_name}/{file_name}"
+
+            with codecs.open(ts_file_name, 'r', 'utf-8') as rf:
+                lines = rf.read()
+                lines = lines + '\n\n'
+
+            with codecs.open(combined_name, 'a+', 'utf-8') as wf:
+                wf.write(lines)
+
+        return True
+
+    @staticmethod
+    def process_transcript_to_csv(file_name: str) -> bool:
+        try:
+            csv_lines = ["participant,utterance"]
+            invalid_lines = []
+            csv_file = re.sub("\\.txt", ".csv", file_name)
+            with codecs.open(file_name, 'r', 'utf-8') as f:
+                lines = f.readlines()
+
+            for line in lines:
+                valid_line = re.search("^(USER|AGENT): (.*)\\.?$", line)
+                if valid_line is None:
+                    empty_line = re.search("\\r?\\n", line)
+                    if empty_line is None:
+                        invalid_lines.append(line)
+                else:
+                    participant = valid_line.group(1)
+                    utterances = valid_line.group(2)
+
+                    # print(f"raw: {utterances}")
+
+                    utterances = re.sub("(,|\\.\\.\\.)", "", utterances)
+                    utterances = re.sub("([Mm][SsRr][Ss]?)\\.", "\\1", utterances)
+
+                    # print(f"after: {utterances}")
+
+                    if re.search("\\.\\s*", utterances) is not None:
+                        utterance_sentences = re.split("\\.\\s*", utterances)
+
+                        utterances_lines = []
+                        for sentence in utterance_sentences:
+                            if len(sentence.strip()) != 0:
+                                utterances_lines.append(sentence)
+
+                        for final_line in utterances_lines:
+                            csv_line = participant + ',' + final_line
+                            # print(f"\tfinal_line: {csv_line}")
+                            csv_lines.append(csv_line)
+                    else:
+                        csv_line = participant + ',' + utterances
+                        # print(f"\tfinal_line: {csv_line}")
+                        csv_lines.append(csv_line)
+
+            csv_text = "\n".join(csv_lines)
+
+            with codecs.open(csv_file, 'w', 'utf-8') as csv:
+                csv.write(csv_text)
+
+            if len(invalid_lines) > 0:
+                print(invalid_lines)
+                return False
+            return True
+        except UnicodeDecodeError as err:
+            print(f"Error processing file: {file_name}: {err.reason}")
+            return False
+
+    @staticmethod
+    def get_transcript_utterances(file_name: str, col_name: str, remove_dups: bool = True) -> list[str]:
+        """Get utterances from a CSV file."""
+        # Load the CSV file to a data frame.
+        df = pd.read_csv(file_name)
+        # Get the named column as a list.
+        utterances = df[col_name].tolist()
+
+        # Remove duplicates, default behaviour.
+        if remove_dups:
+            utterances_set = set(utterances)
+            utterances = list(utterances_set)
+
+        return utterances
