@@ -313,7 +313,6 @@ class CreateEmbeddings(OpenAiCommand):
             input=self.utterances,
             engine=self.engine
         )
-        log.debug(f"{self.session_id} | {self.cmd_name} | Response: {response}")
         self.response = response
         self.result = [embedding['embedding'] for embedding in response['data']]
         return self
