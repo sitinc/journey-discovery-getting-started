@@ -39,7 +39,6 @@ log = logging.getLogger('openAiLogger')
 # Implement exponential backoff as per:
 # https://platform.openai.com/docs/guides/rate-limits/error-mitigation?context=tier-two
 
-# define a retry decorator
 def retry_with_exponential_backoff(
         func,
         initial_delay: float = 1,
@@ -86,7 +85,7 @@ def retry_with_exponential_backoff(
     return wrapper
 
 
-# Define an interface (abstract base class) to make mocking easier.
+# Implement the client and command classes.
 class OpenAiWrapProxy(ABC):
     """
     Define OpenAiWrap proxy interface to support passing OpenAiWrap into OpenAiCommand.
@@ -245,7 +244,12 @@ class CreateEmbeddings(OpenAiCommand):
     Command object for OpenAI create embeddings requests.
     """
 
-    def __init__(self, session_id: str, utterances: str, engine: str = "text-similarity-babbage-001"):
+    def __init__(self,
+                 *,
+                 session_id: str,
+                 utterances: str = None,
+                 engine: str = "text-similarity-babbage-001"
+                 ):
         """
         Construct a new instance.
         :param session_id: The session ID.
@@ -285,6 +289,7 @@ class CreateCompletions(OpenAiCommand):
     """
 
     def __init__(self,
+                 *,
                  session_id: str,
                  user_prompt: str = None,
                  model: str = "gpt-4-1106-preview",
