@@ -29,6 +29,7 @@ import hdbscan
 import umap
 from sklearn.metrics import silhouette_score
 import codecs
+import spacy
 
 # For visualization
 import numpy as np
@@ -46,14 +47,36 @@ characters.\n\n"""
 
 
 class ClusterWrap:
-    """Implement the main Clustering AI Wrapper class."""
+    """
+    Implement the main Clustering AI Wrapper class.
+    """
     def __init__(self,
                  *,
                  openai: OpenAiWrap,
-                 embeddings_model: str):
-        """Construct a new instance."""
+                 spacy_nlp: spacy.language,
+                 embeddings_model: str = 'MiniLM'):
+        """
+        Construct a new instance.
+        :param openai: The OpenAI wrapper
+        :param embeddings_model: The embedding model type name.  Currently only 'MiniLM' is support (and is default)
+        """
         self.openai = openai
+        self.spacy_nlp = spacy_nlp
         self.embeddings_model = embeddings_model
+
+    def preprocess_text(self, text):
+        """
+        Preprocess the text.
+        :param text: The text.
+        :return: The preprocessed text.
+        """
+        doc = self.spacy_nlp(text)
+
+        # Generate a list of tokens after preprocessing
+        tokens = [token.lemma_.lower() for token in doc if not token.is_stop and not token.is_punct]
+
+        preprocessed_text = " ".join(tokens)
+        return preprocessed_text
 
     @staticmethod
     def reduce_dimensionality(*,
@@ -62,7 +85,64 @@ class ClusterWrap:
                               n_components=5,
                               metric='cosine',
                               ):
-        """Reduce dimensionality."""
+        """
+        Reduce dimensionality of the embeddings.
+        :param embeddings: The embeddings
+        :param n_neighbors: The
+        :param n_components: The
+        :param metric: The
+
+        Parameters
+        ----------
+        n_neighbors: float (optional, default 15)
+            The size of local neighborhood (in terms of number of neighboring
+            sample points) used for manifold approximation. Larger values
+            result in more global views of the manifold, while smaller
+            values result in more local data being preserved. In general
+            values should be in the range 2 to 100.
+
+        n_components: int (optional, default 2)
+            The dimension of the space to embed into. This defaults to 2 to
+            provide easy visualization, but can reasonably be set to any
+            integer value in the range 2 to 100.
+
+        metric: string or function (optional, default 'euclidean')
+            The metric to use to compute distances in high dimensional space.
+            If a string is passed it must match a valid predefined metric. If
+            a general metric is required a function that takes two 1d arrays and
+            returns a float can be provided. For performance purposes it is
+            required that this be a numba jit'd function. Valid string metrics
+            include:
+
+            * euclidean
+            * manhattan
+            * chebyshev
+            * minkowski
+            * canberra
+            * braycurtis
+            * mahalanobis
+            * wminkowski
+            * seuclidean
+            * cosine
+            * correlation
+            * haversine
+            * hamming
+            * jaccard
+            * dice
+            * russelrao
+            * kulsinski
+            * ll_dirichlet
+            * hellinger
+            * rogerstanimoto
+            * sokalmichener
+            * sokalsneath
+            * yule
+
+            Metrics that take arguments (such as minkowski, mahalanobis etc.)
+            can have arguments passed via the metric_kwds dictionary. At this
+            time care must be taken and dictionary elements must be ordered
+            appropriately; this will hopefully be fixed in the future.
+        """
         umap_embeddings = umap.UMAP(n_neighbors=n_neighbors,
                                     n_components=n_components,
                                     metric=metric).fit_transform(embeddings)
@@ -73,17 +153,18 @@ class ClusterWrap:
                        *,
                        session_id: str = None,
                        utterances: list[str]):
-        """Get the embeddings."""
+        """
+        Get the embeddings.
+        :param session_id: The session ID.
+        :param utterances: The utterances.
+        """
+
+        # preprocessed_texts = [self.preprocess_text(text) for text in utterances]
+        preprocessed_texts = utterances
+
         if self.embeddings_model == 'MiniLM':
             model = SentenceTransformer('all-MiniLM-L6-v2')
-            embeddings = model.encode(utterances, show_progress_bar=True)
-            return embeddings
-        elif self.embeddings_model == 'OpenAI':
-            cmd = CreateEmbeddings(
-                session_id=session_id,
-                utterances=utterances,
-            )
-            embeddings = self.openai.execute(cmd).result
+            embeddings = model.encode(preprocessed_texts, show_progress_bar=True)
             return embeddings
         else:
             raise Exception(f'Unsupported embeddings model: {self.embeddings_model}')
@@ -107,13 +188,22 @@ class ClusterWrap:
 
     @staticmethod
     def get_silhouette(embeddings, cluster):
-        """Get the silhouette score for a set of clustered embeddings."""
+        """
+        Get the silhouette score for a set of clustered embeddings.
+        :param embeddings: The embeddings
+        :param cluster: The clusters
+        """
         silhouette_avg = silhouette_score(embeddings, cluster.labels_)
         return silhouette_avg
 
     @staticmethod
     def get_clustered_sentences(utterances, cluster):
-        """Get the clustered sentences."""
+        """
+        Get the cluster of original utterances from the clustered embeddings.
+        :param utterances: The original utterances.
+        :param cluster: The clustered embeddings.
+        :return: The clustered utterances.
+        """
         clustered_sentences = {label: [] for label in set(cluster.labels_)}
         for sentence, cluster_label in zip(utterances, cluster.labels_):
             clustered_sentences[cluster_label].append(sentence)
@@ -123,9 +213,14 @@ class ClusterWrap:
                                *,
                                clustered_sentences,
                                output_dir: str,
-                               min_utterances: int = 50,
+                               max_samples: int = 50,
                                ):
-        """Name a set of sentences clusters."""
+        """
+        Name a set of sentences clusters.
+        :param clustered_sentences: The sentence clusters
+        :param output_dir: The output directory
+        :param max_samples: The number of sample utterances to include in the LLM cluster name call.
+        """
         new_labels = []
 
         os.makedirs(output_dir, exist_ok=True)
@@ -136,7 +231,7 @@ class ClusterWrap:
             all_utterances_text = ''
 
             # Only use the first set of entries to avoid too much API data transfer.
-            for utterance in cluster_entries[:min_utterances]:
+            for utterance in cluster_entries[:max_samples]:
                 utterances_text = f'{utterances_text}\n - {utterance}'
 
             # Use all utterances when outputting to a file.
