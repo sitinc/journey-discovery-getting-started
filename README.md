@@ -28,7 +28,7 @@ You can download the Visual Studio Build Tools from [this link](https://visualst
 
 ### Usage
 
-Explore the code and outputs in the Jupyter notebook under notes/journey-discovery-getting-started.ipynb.
+Explore the code and outputs in [the Jupyter notebook](https://github.com/sitinc/journey-discovery-getting-started/blob/main/notes/journey-discovery-getting-started.ipynb).
 
 To run the examples yourself, you will need to create a file, conf/dev.env with the following environment variables:
 
