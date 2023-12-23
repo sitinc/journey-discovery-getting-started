@@ -26,7 +26,7 @@ import openai
 from openai import OpenAI, OpenAIError
 from requests import RequestException
 
-from interactovery.utils import Utils
+from tsdiscovery.utils import Utils
 
 import random
 import time
@@ -286,7 +286,7 @@ class CreateEmbeddings(OpenAiCommand):
     def __init__(self,
                  *,
                  session_id: str,
-                 utterances: str = None,
+                 utterances: list[str] = None,
                  engine: str = "text-similarity-babbage-001"
                  ):
         """
