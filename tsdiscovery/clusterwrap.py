@@ -21,7 +21,8 @@
 # SOFTWARE.
 import os
 
-from tsdiscovery.openaiwrap import OpenAiWrap, CreateCompletions, CreateEmbeddings
+from tsdiscovery.openaiwrap import OpenAiWrap, CreateCompletions
+from tsdiscovery.utils import Utils
 
 import logging
 from sentence_transformers import SentenceTransformer
@@ -38,7 +39,7 @@ import matplotlib.pyplot as plt
 
 
 # Initialize the logger.
-log = logging.getLogger(__name__)
+log = logging.getLogger('clusterLogger')
 
 sys_prompt_name_cluster = """You are helping me identify clusters based on utterances that are semantically similar."""
 usr_prompt_name_cluster = """Below is a list of utterances.  Suggest an intent name that best fits the semantic 
@@ -211,16 +212,21 @@ class ClusterWrap:
 
     def get_new_cluster_labels(self,
                                *,
+                               session_id: str = None,
                                clustered_sentences,
                                output_dir: str,
                                max_samples: int = 50,
                                ):
         """
         Name a set of sentences clusters.
+        :param session_id: The session ID.
         :param clustered_sentences: The sentence clusters
         :param output_dir: The output directory
         :param max_samples: The number of sample utterances to include in the LLM cluster name call.
         """
+        if session_id is None:
+            session_id = Utils.new_session_id()
+
         new_labels = []
 
         os.makedirs(output_dir, exist_ok=True)
@@ -249,14 +255,12 @@ class ClusterWrap:
                 continue
 
             # Generate and save the new clusters name.
+            session_id = Utils.new_session_id()
+            log.info(f"{session_id} | get_new_cluster_labels | Generating name for Cluster #{i}")
             new_cluster_name = self.get_cluster_name(utterances=utterances_text)
 
             new_cluster_name_strip = new_cluster_name.strip()
             new_labels.append(new_cluster_name_strip)
-
-            # print(f"\n\nCluster {new_cluster_name}:")
-            # print(utterances_text)
-            # print("")
 
             with codecs.open(f'{output_dir}/{i}_{new_cluster_name_strip}.txt', 'w', 'utf-8') as f:
                 f.write(all_utterances_text)

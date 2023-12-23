@@ -26,12 +26,14 @@ import codecs
 import os
 import re
 import spacy
+import logging
 import matplotlib.pyplot as plt
 
 from tsdiscovery.openaiwrap import OpenAiWrap, CreateCompletions
 from tsdiscovery.clusterwrap import ClusterWrap
 from tsdiscovery.utils import Utils
 
+log = logging.getLogger('transcriptLogger')
 
 sys_prompt_gen_transcript = """You are helping me generate example transcripts.  Do not reply back with anything other 
 than the transcript content itself.  No headers or footers.  Separate each turn with a blank line.  Each line should 
@@ -108,6 +110,9 @@ class Transcripts:
         if quantity > self.max_transcripts:
             raise Exception(f"max quantity is {self.max_transcripts} unless you set max_transcripts via constructor")
 
+        if session_id is None:
+            session_id = Utils.new_session_id()
+
         for i in range(0, quantity):
             final_file_name = f'{output_dir}/transcript{i}.txt'
             os.makedirs(output_dir, exist_ok=True)
@@ -115,6 +120,7 @@ class Transcripts:
             if os.path.exists(final_file_name):
                 continue
 
+            log.info(f"{session_id} | gen_agent_transcripts | Generating example transcript #{i}")
             gen_transcript = self.gen_agent_transcript(
                 session_id=session_id,
                 model=model,
@@ -238,6 +244,7 @@ class Transcripts:
 
     def cluster_and_name_utterances(self,
                                     *,
+                                    session_id: str = None,
                                     csv_file: str,
                                     csv_col: str,
                                     output_dir: str,
@@ -245,6 +252,12 @@ class Transcripts:
                                     min_samples=5,
                                     epsilon=0.2,
                                     ) -> None:
+        """
+        Cluster the utterances into groups, use generative AI to name them, and then store the results in files.
+        """
+        if session_id is None:
+            session_id = Utils.new_session_id()
+
         # Initialize the Cluster Client.
         cluster_client = ClusterWrap(
             openai=self.openai,
@@ -276,11 +289,12 @@ class Transcripts:
 
         # Get silhouette score.
         silhouette_avg = cluster_client.get_silhouette(umap_embeddings, cluster)
-        print(f'Silhouette Score: {silhouette_avg:.2f}')
+        log.info(f"{session_id} | gen_agent_transcripts | Silhouette Score: {silhouette_avg:.2f}")
 
         clustered_sentences = cluster_client.get_clustered_sentences(utterances, cluster)
 
         new_labels = cluster_client.get_new_cluster_labels(
+            session_id=session_id,
             clustered_sentences=clustered_sentences,
             output_dir=output_dir,
         )
