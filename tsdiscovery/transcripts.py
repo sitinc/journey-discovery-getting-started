@@ -377,8 +377,8 @@ class Transcripts:
         plt.figure(figsize=(10, len(file_names_sorted) * 0.5))
 
         plt.barh(file_names_sorted, line_counts_sorted)
-        plt.xlabel('Value Span Count')
-        plt.title('Number of Value Spans per-Entity (Sorted)')
+        plt.xlabel('Value Count')
+        plt.title('Number of Values per-Entity (Sorted)')
         plt.gca().invert_yaxis()  # Invert y-axis to have the highest value on top
         plt.tight_layout()  # Adjust layout to fit all labels
         plt.show()
@@ -411,7 +411,7 @@ class Transcripts:
         # Adding a legend to the side of the chart
         plt.legend(wedges, file_names_sorted, title="Entity Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
-        plt.title('Distribution of Value Spans by Entity Type (Sorted by Size)')
+        plt.title('Distribution of Values by Entity Type (Sorted by Size)')
         plt.show()
 
     @staticmethod
