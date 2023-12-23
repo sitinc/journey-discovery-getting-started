@@ -30,23 +30,8 @@ You can download the Visual Studio Build Tools from [this link](https://visualst
 
 Explore the code and outputs in [the Jupyter notebook](https://github.com/sitinc/journey-discovery-getting-started/blob/main/notes/journey-discovery-getting-started.ipynb).
 
-To run the examples yourself, you will need to create a file, conf/dev.env with the following environment variables:
-
-```conf/dev.env
-OPENAI_API_KEY=<Your OpenAI API Key>
-OPENAI_ORG=<Your OpenAI Org ID>
-```
-
-There are two notebook cells that will make use of the OpenAI API.  These will incur billable API usage for the 
-configured OpenAI API key and org.  DO NOT execute the notebook code if you don't entirely understand the cost 
-implications of the actions you will take.
-
-The first cell of the notebook will generate sample transcripts.  The default configured value is 500.
-
-The next cell that will make use the OpenAI API is the third cell which clusters utterances from transcripts and uses
-the OpenAI chat completions API to suggest an intent name for the first 50 sampled utterances from each clustered 
-intent.
-
+The notebook should be self-explanatory in its usage through documentation.  Pay attention to portions of the notebook 
+that could incur financial cost, for example generating transcripts or naming clusters with OpenAI chat completions API.
 
 I will be continuing to improve and expand the capabilities of this notebook and associated modules over time, without 
 any commitments on functionality or timelines.
