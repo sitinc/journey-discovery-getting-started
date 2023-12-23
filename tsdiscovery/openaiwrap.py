@@ -239,7 +239,7 @@ class OpenAiWrap(OpenAiWrapProxy):
 
         try:
             log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Request: {cmd}")
-            log.info(f"{cmd.session_id} | {cmd.cmd_name} | Input: {cmd.input_key()}")
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Input: {cmd.input_key()}")
 
             start_time = time.time()
             cmd_result: OpenAiCommand = cmd.run(self)
@@ -261,7 +261,7 @@ class OpenAiWrap(OpenAiWrapProxy):
 
             del cmd_result.response
 
-            log.info(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.output_key()}")
+            log.debug(f"{cmd.session_id} | {cmd.cmd_name} | Output: {cmd_result.output_key()}")
 
             return cmd_result
         except OpenAIError as e:  # Handle OpenAI-specific errors
