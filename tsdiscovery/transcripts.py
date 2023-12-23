@@ -310,7 +310,7 @@ class Transcripts:
 
         plt.barh(file_names_sorted, line_counts_sorted)
         plt.xlabel('Utterance Count')
-        plt.title('Number of Utterances per-Cluster (Sorted)')
+        plt.title('Number of Unique Utterances per-Cluster (Sorted)')
         plt.gca().invert_yaxis()  # Invert y-axis to have the highest value on top
         plt.tight_layout()  # Adjust layout to fit all labels
         plt.show()
@@ -355,7 +355,7 @@ class Transcripts:
         # Add a legend
         plt.legend(wedges, file_names_sorted, title="Files", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
-        plt.title('Distribution of Utterances by Cluster (<1% as Other, Sorted by Size)')
+        plt.title('Distribution of Unique Utterances by Cluster (<1% as Other, Sorted by Size)')
         plt.show()
 
     @staticmethod
