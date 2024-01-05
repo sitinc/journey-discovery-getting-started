@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2023 Smart Interactive Transformations Inc.
+# Copyright (c) 2023 Justin Randall, Smart Interactive Transformations Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -21,8 +21,8 @@
 # SOFTWARE.
 import os
 
-from tsdiscovery.openaiwrap import OpenAiWrap, CreateCompletions
-from tsdiscovery.utils import Utils
+from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
+from interactovery.utils import Utils
 
 import logging
 from sentence_transformers import SentenceTransformer
