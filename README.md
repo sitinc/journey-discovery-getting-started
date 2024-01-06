@@ -28,10 +28,24 @@ You can download the Visual Studio Build Tools from [this link](https://visualst
 
 ### Usage
 
-Explore the code and outputs in [the Jupyter notebook](https://github.com/sitinc/journey-discovery-getting-started/blob/main/notes/journey-discovery-getting-started.ipynb).
+Explore the code and outputs in [various Jupyter notebooks](https://github.com/sitinc/journey-discovery-getting-started/blob/main/notes/).  Here is a recommended guide through the notebooks, which have progressive dependencies.
+
+Part 1 - [Getting Started](https://github.com/sitinc/journey-discovery-getting-started/blob/main/notes/journey-discovery-getting-started.ipynb)
+
+Part 2 - [Emergent Contact Drivers](https://github.com/sitinc/journey-discovery-getting-started/blob/main/notes/journey-discovery-emergent-contact-drivers.ipynb)
 
 The notebook should be self-explanatory in its usage through documentation.  Pay attention to portions of the notebook 
 that could incur financial cost, for example generating transcripts or naming clusters with OpenAI chat completions API.
 
-I will be continuing to improve and expand the capabilities of this notebook and associated modules over time, without 
+I will be continuing to improve and expand the capabilities of the notebooks and associated modules over time, without 
 any commitments on functionality or timelines.
+
+
+### Interactology Python module
+
+All underlying Python code necessary to run the notebook is included within this project for simplicity, but you can also import the packaged interactovery Python module from PyPI directly into your projects if you wish to re-use any of its components:
+
+```bash
+pip install interactovery
+```
+
