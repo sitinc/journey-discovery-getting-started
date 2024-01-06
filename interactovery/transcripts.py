@@ -28,6 +28,7 @@ import re
 import spacy
 import logging
 import matplotlib.pyplot as plt
+from collections import Counter
 
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.clusterwrap import ClusterWrap
@@ -36,8 +37,8 @@ from interactovery.utils import Utils
 log = logging.getLogger('transcriptLogger')
 
 sys_prompt_gen_transcript = """You are helping me generate example transcripts.  Do not reply back with anything other 
-than the transcript content itself.  No headers or footers.  Separate each turn with a blank line.  Each line should 
-start with either "USER: " or "AGENT: "."""
+than the transcript content itself.  No headers or footers.  Only generate a single transcript example for each 
+response.  Separate each turn with a blank line.  Each line should start with either "USER: " or "AGENT: "."""
 
 
 def count_lines(file_path):
@@ -222,6 +223,27 @@ class Transcripts:
 
         return utterances
 
+    @staticmethod
+    def get_transcript_utterances_for_party(*,
+                                            party: str,
+                                            file_name: str,
+                                            col_name: str,
+                                            remove_dups: bool = True) -> list[str]:
+        """Get utterances from a CSV file."""
+        # Load the CSV file to a data frame.
+        df = pd.read_csv(file_name)
+
+        # Select 'utterance' values based on the participant mask
+        mask = df['participant'] == party
+        utterances = df.loc[mask, col_name].tolist()
+
+        # Remove duplicates, default behaviour.
+        if remove_dups:
+            utterances_set = set(utterances)
+            utterances = list(utterances_set)
+
+        return utterances
+
     def extract_entities(self, file_path: str, output_dir: str):
         entities_by_type = defaultdict(set)
 
@@ -244,10 +266,11 @@ class Transcripts:
 
     def cluster_and_name_utterances(self,
                                     *,
-                                    session_id: str = None,
-                                    csv_file: str,
-                                    csv_col: str,
                                     output_dir: str,
+                                    session_id: str = None,
+                                    csv_file: str = None,
+                                    csv_col: str = None,
+                                    utterances: list[str] = None,
                                     min_cluster_size=40,
                                     min_samples=5,
                                     epsilon=0.2,
@@ -266,10 +289,17 @@ class Transcripts:
         )
 
         # Get the utterances.
-        utterances = Transcripts.get_transcript_utterances(
-            file_name=csv_file,
-            col_name=csv_col,
-        )
+        if utterances is None:
+            if csv_file is None:
+                raise Exception(f"utterances or csv_file are required inputs")
+
+            if csv_col is None:
+                csv_col = 'utterance'
+
+            utterances = Transcripts.get_transcript_utterances(
+                file_name=csv_file,
+                col_name=csv_col,
+            )
 
         # Create the embeddings.
         embeddings = cluster_client.get_embeddings(utterances=utterances)
@@ -302,18 +332,42 @@ class Transcripts:
         cluster_client.visualize_clusters(umap_embeddings, labels, new_labels)
 
     @staticmethod
-    def visualize_intent_bars(directory: str):
+    def visualize_intent_bars(directory: str, utterance_counts: Counter = None):
         file_names = []
         line_counts = []
 
+        title_key = 'Unique Utterances'
+
         for file in os.listdir(directory):
-            if os.path.isfile(os.path.join(directory, file)):
+            file_path = os.path.join(directory, file)
+            if os.path.isfile(file_path):
                 if file == "-1_noise.txt":
                     continue
 
                 normed_file = re.sub("[0-9]+_(.*?)\\.txt", "\\1", file)
                 file_names.append(normed_file)
-                line_counts.append(count_lines(os.path.join(directory, file)))
+
+                if utterance_counts is not None:
+                    title_key = 'Utterance Volume'
+                    by_utterance_count = 0
+                    with codecs.open(file_path, 'r', 'utf-8') as open_file:
+                        for line in open_file:
+                            line_trim = line.strip()
+                            if line_trim in utterance_counts:
+                                final_count = utterance_counts.get(line_trim)
+                                # print(f'{line_trim} has {final_count} instances')
+                                by_utterance_count = by_utterance_count + final_count
+                            else:
+                                # print(f'{line_trim} not previously recorded')
+                                by_utterance_count = by_utterance_count + 1
+                    by_line_count = count_lines(file_path)
+
+                    # print(f'intent {normed_file} - by_line_count: {by_line_count}, by_utterance_count: {by_utterance_count}')
+
+                    line_counts.append(by_utterance_count)
+                else:
+                    by_line_count = count_lines(file_path)
+                    line_counts.append(by_line_count)
 
         # Sort the files by line count in descending order
         sorted_data = sorted(zip(line_counts, file_names), reverse=True)
@@ -324,21 +378,45 @@ class Transcripts:
 
         plt.barh(file_names_sorted, line_counts_sorted)
         plt.xlabel('Utterance Count')
-        plt.title('Number of Unique Utterances per-Cluster (Sorted)')
+        plt.title(f'Number of {title_key} per-Cluster (Sorted)')
         plt.gca().invert_yaxis()  # Invert y-axis to have the highest value on top
         plt.tight_layout()  # Adjust layout to fit all labels
         plt.show()
 
     @staticmethod
-    def visualize_intent_pie(directory):
+    def visualize_intent_pie(directory, utterance_counts: Counter = None):
         file_names = []
         line_counts = []
 
+        title_key = 'Unique Utterances'
+
         for file in os.listdir(directory):
-            if os.path.isfile(os.path.join(directory, file)):
+            file_path = os.path.join(directory, file)
+            if os.path.isfile(file_path):
                 normed_file = re.sub("[0-9]+_(.*?)\\.txt", "\\1", file)
                 file_names.append(normed_file)
-                line_counts.append(count_lines(os.path.join(directory, file)))
+
+                if utterance_counts is not None:
+                    title_key = 'Utterance Volume'
+                    by_utterance_count = 0
+                    with codecs.open(file_path, 'r', 'utf-8') as open_file:
+                        for line in open_file:
+                            line_trim = line.strip()
+                            if line_trim in utterance_counts:
+                                final_count = utterance_counts.get(line_trim)
+                                # print(f'{line_trim} has {final_count} instances')
+                                by_utterance_count = by_utterance_count + final_count
+                            else:
+                                # print(f'{line_trim} not previously recorded')
+                                by_utterance_count = by_utterance_count + 1
+                    by_line_count = count_lines(file_path)
+
+                    # print(f'intent {normed_file} - by_line_count: {by_line_count}, by_utterance_count: {by_utterance_count}')
+
+                    line_counts.append(by_utterance_count)
+                else:
+                    by_line_count = count_lines(file_path)
+                    line_counts.append(by_line_count)
 
         # Group slices below 1%
         total_lines = sum(line_counts)
@@ -369,7 +447,7 @@ class Transcripts:
         # Add a legend
         plt.legend(wedges, file_names_sorted, title="Files", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
-        plt.title('Distribution of Unique Utterances by Cluster (<1% as Other, Sorted by Size)')
+        plt.title(f'Distribution of {title_key} by Cluster (<1% as Other, Sorted by Size)')
         plt.show()
 
     @staticmethod
