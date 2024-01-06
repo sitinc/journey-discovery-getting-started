@@ -44,7 +44,7 @@ log = logging.getLogger('clusterLogger')
 sys_prompt_name_cluster = """You are helping me identify clusters based on utterances that are semantically similar."""
 usr_prompt_name_cluster = """Below is a list of utterances.  Suggest an intent name that best fits the semantic 
 similarity between these utterances.  Output the result as three words maximum in camel case with no spaces or special 
-characters.\n\n"""
+characters.  Don't use the word \"intent\" in the intent name.\n\n"""
 
 
 class ClusterWrap:
