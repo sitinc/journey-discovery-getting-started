@@ -21,6 +21,8 @@
 # SOFTWARE.
 import os
 
+import json
+
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.utils import Utils
 
@@ -45,6 +47,20 @@ sys_prompt_name_cluster = """You are helping me identify clusters based on utter
 usr_prompt_name_cluster = """Below is a list of utterances.  Suggest an intent name that best fits the semantic 
 similarity between these utterances.  Output the result as three words maximum in camel case with no spaces or special 
 characters.  Don't use the word \"intent\" in the intent name.\n\n"""
+
+sys_prompt_define_cluster = """You are helping me identify cluster names and meanings based on semantically similarity 
+of utterances."""
+usr_prompt_define_cluster = """Below is a list of utterances.  Suggest an intent name and a description that best fits 
+the semantic similarity between these utterances.  Output the result as a JSON object with two parameters.  The first 
+parameter, "intent", is a string representing the intent name.  The second parameter "description" is a single sentence 
+  describing the meaning of the relationship between the utterances.  The "description" should be no more than 12 
+  words.  The intent name should be three words maximum in camel case with no spaces or special characters.  Don't use 
+  the word \"intent\" in the intent name.\n\n"""
+
+sys_prompt_group_intents = """You are helping me group semantically similar intents together."""
+usr_prompt_group_intents = """Below is a list of intent names that were generated based on utterances having semantic 
+similarity.  Reply back with a JSON object with a property name representing each group, and it's value set to the 
+array of grouped intent names.  Don't put the JSON object into a string and don't wrap it with ```json or backticks.\n\n"""
 
 
 class ClusterWrap:
@@ -267,6 +283,83 @@ class ClusterWrap:
 
         return new_labels
 
+    def get_new_cluster_definitions(self,
+                                    *,
+                                    session_id: str = None,
+                                    clustered_sentences,
+                                    output_dir: str,
+                                    max_samples: int = 50,
+                                    ) -> list[dict[str, str]]:
+        """
+        Name a set of sentences clusters.
+        :param session_id: The session ID.
+        :param clustered_sentences: The sentence clusters
+        :param output_dir: The output directory
+        :param max_samples: The number of sample utterances to include in the LLM cluster name call.
+        """
+        if session_id is None:
+            session_id = Utils.new_session_id()
+
+        new_names = []
+        new_descriptions = []
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Display clusters
+        for i, cluster_entries in clustered_sentences.items():
+            utterances_text = ''
+            all_utterances_text = ''
+
+            # Only use the first set of entries to avoid too much API data transfer.
+            for utterance in cluster_entries[:max_samples]:
+                utterances_text = f'{utterances_text}\n - {utterance}'
+
+            # Use all utterances when outputting to a file.
+            first_itr = 1
+            for utterance in cluster_entries:
+                if first_itr == 1:
+                    all_utterances_text = f'{utterance}'
+                    first_itr = 0
+                else:
+                    all_utterances_text = f'{all_utterances_text}\n{utterance}'
+
+            if i == -1:
+                final_output_dir = f'{output_dir}/-1_noise'
+                os.makedirs(final_output_dir, exist_ok=True)
+                with codecs.open(f'{final_output_dir}/-1_noise.txt', 'w', 'utf-8') as f:
+                    f.write(all_utterances_text)
+                continue
+
+            # Generate and save the new clusters name.
+            session_id = Utils.new_session_id()
+            log.info(f"{session_id} | get_new_cluster_labels | Generating name for Cluster #{i}")
+            new_cluster_definition_str = self.get_cluster_definition(utterances=utterances_text)
+            new_cluster_definition = json.loads(new_cluster_definition_str)
+
+            log.debug(f"{session_id} | get_new_cluster_labels | Cluster #{i}: {new_cluster_definition}")
+
+            new_cluster_name = new_cluster_definition['intent']
+            new_cluster_descr = new_cluster_definition['description']
+
+            new_cluster_name_strip = new_cluster_name.strip()
+
+            new_names.append(new_cluster_name_strip)
+            new_descriptions.append(new_cluster_descr)
+
+            final_output_dir = f'{output_dir}/{i}_{new_cluster_name_strip}'
+            os.makedirs(final_output_dir, exist_ok=True)
+
+            with codecs.open(f'{final_output_dir}/readme.txt', 'w', 'utf-8') as f:
+                f.write(new_cluster_descr)
+
+            with codecs.open(f'{final_output_dir}/{i}_{new_cluster_name_strip}.txt', 'w', 'utf-8') as f:
+                f.write(all_utterances_text)
+
+        new_definitions =\
+            [{'name': name, 'description': description} for name, description in zip(new_names, new_descriptions)]
+
+        return new_definitions
+
     def get_cluster_name(self,
                          *,
                          utterances: str,
@@ -289,6 +382,32 @@ class ClusterWrap:
             user_prompt=user_prompt,
         )
         return self.openai.execute(cmd).result
+
+    def get_cluster_definition(self,
+                               *,
+                               utterances: str,
+                               model: str = "gpt-4-1106-preview",
+                               session_id: str = None
+                               ):
+        """
+        Generate an agent transcript.
+        :param model: The OpenAI chat completion model.
+        :param utterances: The utterances.
+        :param session_id: The session ID.
+        :return: the result transcript.
+        """
+        user_prompt = usr_prompt_define_cluster + utterances
+
+        cmd = CreateCompletions(
+            session_id=session_id,
+            model=model,
+            sys_prompt=sys_prompt_define_cluster,
+            user_prompt=user_prompt,
+        )
+        result = self.openai.execute(cmd).result
+        result = result.strip('```json')
+        result = result.strip('`')
+        return result
 
     @staticmethod
     def visualize_clusters(embeddings, labels, new_labels) -> None:
@@ -321,3 +440,45 @@ class ClusterWrap:
         plt.ylabel('t-SNE Dimension 2')
         plt.colorbar(label='Cluster')
         plt.show()
+
+    def get_grouped_intent_names(self,
+                                 *,
+                                 session_id: str = None,
+                                 intent_names: list[str],
+                                 output_dir: str,
+                                 model: str = "gpt-4-1106-preview",
+                                 ):
+        """
+        Group similar intent names together.
+        :param session_id: The session ID.
+        :param intent_names: The intent names.
+        :param output_dir: The output directory.
+        :param model: The OpenAI chat completion model.
+        """
+        if session_id is None:
+            session_id = Utils.new_session_id()
+
+        new_labels = []
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        intent_names_text = '\n'.join(intent_names)
+
+        # Generate and save the new clusters name.
+        session_id = Utils.new_session_id()
+        log.info(f"{session_id} | get_grouped_intent_names | Getting groups for Cluster Names")
+
+        user_prompt = usr_prompt_group_intents + intent_names_text
+
+        cmd = CreateCompletions(
+            session_id=session_id,
+            model=model,
+            sys_prompt=sys_prompt_group_intents,
+            user_prompt=user_prompt,
+        )
+        cmd_result = self.openai.execute(cmd)
+        result = cmd_result.result
+        log.info(f"{session_id} | get_grouped_intent_names | result: {result}")
+
+        with codecs.open(f'{output_dir}/cluster_groupings.txt', 'w', 'utf-8') as f:
+            f.write(result)
