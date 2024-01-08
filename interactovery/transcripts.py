@@ -21,7 +21,9 @@
 # SOFTWARE.
 
 from collections import defaultdict
+import pickle
 import pandas as pd
+import numpy as np
 import codecs
 import os
 import re
@@ -39,6 +41,14 @@ log = logging.getLogger('transcriptLogger')
 sys_prompt_gen_transcript = """You are helping me generate example transcripts.  Do not reply back with anything other 
 than the transcript content itself.  No headers or footers.  Only generate a single transcript example for each 
 response.  Separate each turn with a blank line.  Each line should start with either "USER: " or "AGENT: "."""
+
+DEF_TS_COMBINED_FILENAME = 'transcripts_combined.csv'
+
+DEF_EMBEDDINGS_FILENAME = 'embeddings.npy'
+DEF_EMBEDDINGS_DIRNAME = 'embeddings'
+
+DEF_ENTITY_VALUE_SOURCES = 'value_sources.csv'
+DEF_ENTITY_UNIQUE_VALUES = 'unique_values.txt'
 
 
 class Utterances:
@@ -183,13 +193,19 @@ class Transcripts:
             session_id = Utils.new_session_id()
 
         os.makedirs(output_dir, exist_ok=True)
+        file_progress = 0
+        file_progress_total = quantity
+
         for i in range(offset, offset+quantity):
+            file_progress = file_progress + 1
+            Utils.progress_bar(file_progress, file_progress_total)
+
             final_file_name = f'{output_dir}/transcript{i}.txt'
 
             if os.path.exists(final_file_name):
                 continue
 
-            log.info(f"{session_id} | gen_agent_transcripts | Generating example transcript #{i}")
+            log.debug(f"{session_id} | gen_agent_transcripts | Generating example transcript #{i}")
             gen_transcript = self.gen_agent_transcript(
                 session_id=session_id,
                 model=model,
@@ -324,9 +340,9 @@ class Transcripts:
 
     def concat_and_process_ts_to_csv(self,
                                      *,
-                                     in_dir: str,
-                                     out_dir: str,
-                                     out_file: str) -> bool:
+                                     in_dir: str = None,
+                                     out_dir: str = None,
+                                     out_file: str = DEF_TS_COMBINED_FILENAME) -> str | None:
         """
         Concatenate and process the transcripts
         :param in_dir: The input directory with transcripts.
@@ -334,12 +350,18 @@ class Transcripts:
         :param out_file: The name of the combined transcripts CSV output file.
         :return: True if no errors occurred.
         """
-        try:
-            combined_name = f"{out_dir}/{out_file}"
+        if in_dir is None:
+            raise Exception('in_dir is required')
 
+        if out_dir is None:
+            raise Exception('out_dir is required')
+
+        out_file_path = os.path.join(out_dir, out_file)
+
+        try:
             os.makedirs(out_dir, exist_ok=True)
 
-            with codecs.open(combined_name, 'w+', 'utf-8') as wf:
+            with codecs.open(out_file_path, 'w+', 'utf-8') as wf:
                 wf.write("source,participant,utterance\n")
 
             ts_files = os.listdir(in_dir)
@@ -364,16 +386,27 @@ class Transcripts:
                             csv_text = "\n".join(csv_lines)
                             csv_text = csv_text + '\n'
 
-                            with codecs.open(combined_name, 'a+', 'utf-8') as wf:
+                            with codecs.open(out_file_path, 'a+', 'utf-8') as wf:
                                 wf.write(csv_text)
                 except UnicodeDecodeError as err:
                     log.error(f"Unicode decode error for file: {ts_file}: {err.reason}")
-                    return False
+                    return None
         except Exception as err:
             log.error(f"Unhandled exception: {err}")
-            return False
+            return None
 
-        return True
+        return out_file_path
+
+    @staticmethod
+    def get_combined_utterances(self,
+                                *,
+                                in_dir: str,
+                                source: str = DEF_TS_COMBINED_FILENAME,
+                                ) -> pd.DataFrame:
+        path = os.path.join(in_dir, source)
+
+        df = pd.read_csv(path)
+        return df
 
     @staticmethod
     def get_transcript_utterances_for_party(*,
@@ -417,20 +450,21 @@ class Transcripts:
             entity_dir_path = os.path.join(output_dir, entity_name)
             os.makedirs(entity_dir_path, exist_ok=True)
 
-            values_file_name = f"{entity_dir_path}/value_sources.csv"
-            with codecs.open(values_file_name, 'w', 'utf-8') as f:
+            values_file_path = os.path.join(entity_dir_path, DEF_ENTITY_VALUE_SOURCES)
+            with codecs.open(values_file_path, 'w', 'utf-8') as f:
                 f.write('source,value\n')
                 for example in examples:
                     for source in entities_by_source[example]:
                         f.write(source+','+example + '\n')
 
-            unique_file_name = f"{entity_dir_path}/unique_values.txt"
-            with codecs.open(unique_file_name, 'w', 'utf-8') as f:
+            unique_file_path = os.path.join(entity_dir_path, DEF_ENTITY_UNIQUE_VALUES)
+            with codecs.open(unique_file_path, 'w', 'utf-8') as f:
                 for example in examples:
                     f.write(example+'\n')
 
     def cluster_and_name_utterances(self,
                                     *,
+                                    workspace_dir: str,
                                     output_dir: str,
                                     session_id: str = None,
                                     csv_file: str = None,
@@ -466,25 +500,46 @@ class Transcripts:
                 col_name=csv_col,
             )
 
-        # Create the embeddings.
-        embeddings = cluster_client.get_embeddings(utterances=utterances)
+        # Create/Load/Store the embeddings.
+        embeddings_file_name = DEF_EMBEDDINGS_FILENAME
+        embeddings_dir = os.path.join(workspace_dir, 'embeddings')
+        embeddings_file_path = os.path.join(embeddings_dir, embeddings_file_name)
+
+        if os.path.isfile(embeddings_file_path):
+            log.info(f"{session_id} | cluster_and_name_utterances | Loading embeddings from {embeddings_file_name}")
+            embeddings = np.load(embeddings_file_path)
+        else:
+            log.info(f"{session_id} | cluster_and_name_utterances | Generating embeddings with 'all-MiniLM-L6-v2'")
+            embeddings = cluster_client.get_embeddings(utterances=utterances)
+            np.save(embeddings_file_path, embeddings)
 
         # Reduce dimensionality.
         umap_embeddings = cluster_client.reduce_dimensionality(embeddings=embeddings)
 
-        # Cluster the utterances.
-        cluster = cluster_client.hdbscan(
-            embeddings=umap_embeddings,
-            min_cluster_size=min_cluster_size,
-            min_samples=min_samples,
-            epsilon=epsilon,
-        )
+        # Create/Load/Store the cluster results.
+        clusters_file_name = 'hdbscan_clusters.pkl'
+        clusters_dir = os.path.join(workspace_dir, 'clusters')
+        clusters_file_path = os.path.join(clusters_dir, clusters_file_name)
+        if os.path.isfile(clusters_file_path):
+            log.info(f"{session_id} | cluster_and_name_utterances | Loading clusters from {clusters_file_name}")
+            with open(clusters_file_path, 'rb') as file:
+                cluster = pickle.load(file)
+        else:
+            log.info(f"{session_id} | cluster_and_name_utterances | Predicting cluster labels with HDBSCAN")
+            cluster = cluster_client.hdbscan(
+                embeddings=umap_embeddings,
+                min_cluster_size=min_cluster_size,
+                min_samples=min_samples,
+                epsilon=epsilon,
+            )
+            with open(clusters_file_path, 'wb') as file:
+                pickle.dump(cluster, file)
 
         labels = cluster.labels_
 
         # Get silhouette score.
         silhouette_avg = cluster_client.get_silhouette(umap_embeddings, cluster)
-        log.info(f"{session_id} | gen_agent_transcripts | Silhouette Score: {silhouette_avg:.2f}")
+        log.info(f"{session_id} | cluster_and_name_utterances | Silhouette Score: {silhouette_avg:.2f}")
 
         clustered_sentences = cluster_client.get_clustered_sentences(utterances, cluster)
 
@@ -559,7 +614,7 @@ class Transcripts:
         title_key = 'Value Volume'
 
         for entity_dir in os.listdir(directory):
-            entity_file_name = 'value_sources.csv'
+            entity_file_name = DEF_ENTITY_VALUE_SOURCES
             entity_file_path = os.path.join(directory, entity_dir, entity_file_name)
             if os.path.isfile(entity_file_path):
                 entity_label = entity_dir
