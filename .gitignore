@@ -162,3 +162,5 @@ cython_debug/
 conf/dev.env
 
 output
+
+workspaces
