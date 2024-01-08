@@ -60,7 +60,8 @@ parameter, "intent", is a string representing the intent name.  The second param
 sys_prompt_group_intents = """You are helping me group semantically similar intents together."""
 usr_prompt_group_intents = """Below is a list of intent names that were generated based on utterances having semantic 
 similarity.  Reply back with a JSON object with a property name representing each group, and it's value set to the 
-array of grouped intent names.  Don't put the JSON object into a string and don't wrap it with ```json or backticks.\n\n"""
+array of grouped intent names.  Don't put the JSON object into a string and don't wrap it with ```json or backticks.
+\n\n"""
 
 
 class ClusterWrap:
@@ -226,63 +227,6 @@ class ClusterWrap:
             clustered_sentences[cluster_label].append(sentence)
         return clustered_sentences
 
-    def get_new_cluster_labels(self,
-                               *,
-                               session_id: str = None,
-                               clustered_sentences,
-                               output_dir: str,
-                               max_samples: int = 50,
-                               ):
-        """
-        Name a set of sentences clusters.
-        :param session_id: The session ID.
-        :param clustered_sentences: The sentence clusters
-        :param output_dir: The output directory
-        :param max_samples: The number of sample utterances to include in the LLM cluster name call.
-        """
-        if session_id is None:
-            session_id = Utils.new_session_id()
-
-        new_labels = []
-
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Display clusters
-        for i, cluster_entries in clustered_sentences.items():
-            utterances_text = ''
-            all_utterances_text = ''
-
-            # Only use the first set of entries to avoid too much API data transfer.
-            for utterance in cluster_entries[:max_samples]:
-                utterances_text = f'{utterances_text}\n - {utterance}'
-
-            # Use all utterances when outputting to a file.
-            first_itr = 1
-            for utterance in cluster_entries:
-                if first_itr == 1:
-                    all_utterances_text = f'{utterance}'
-                    first_itr = 0
-                else:
-                    all_utterances_text = f'{all_utterances_text}\n{utterance}'
-
-            if i == -1:
-                with codecs.open(f'{output_dir}/-1_noise.txt', 'w', 'utf-8') as f:
-                    f.write(all_utterances_text)
-                continue
-
-            # Generate and save the new clusters name.
-            session_id = Utils.new_session_id()
-            log.info(f"{session_id} | get_new_cluster_labels | Generating name for Cluster #{i}")
-            new_cluster_name = self.get_cluster_name(utterances=utterances_text)
-
-            new_cluster_name_strip = new_cluster_name.strip()
-            new_labels.append(new_cluster_name_strip)
-
-            with codecs.open(f'{output_dir}/{i}_{new_cluster_name_strip}.txt', 'w', 'utf-8') as f:
-                f.write(all_utterances_text)
-
-        return new_labels
-
     def get_new_cluster_definitions(self,
                                     *,
                                     session_id: str = None,
@@ -359,29 +303,6 @@ class ClusterWrap:
             [{'name': name, 'description': description} for name, description in zip(new_names, new_descriptions)]
 
         return new_definitions
-
-    def get_cluster_name(self,
-                         *,
-                         utterances: str,
-                         model: str = "gpt-4-1106-preview",
-                         session_id: str = None
-                         ):
-        """
-        Generate an agent transcript.
-        :param model: The OpenAI chat completion model.
-        :param utterances: The utterances.
-        :param session_id: The session ID.
-        :return: the result transcript.
-        """
-        user_prompt = usr_prompt_name_cluster + utterances
-
-        cmd = CreateCompletions(
-            session_id=session_id,
-            model=model,
-            sys_prompt=sys_prompt_name_cluster,
-            user_prompt=user_prompt,
-        )
-        return self.openai.execute(cmd).result
 
     def get_cluster_definition(self,
                                *,
