@@ -201,9 +201,9 @@ class Transcripts:
         if session_id is None:
             session_id = Utils.new_session_id()
 
+        os.makedirs(output_dir, exist_ok=True)
         for i in range(0, quantity):
             final_file_name = f'{output_dir}/transcript{i}.txt'
-            os.makedirs(output_dir, exist_ok=True)
 
             if os.path.exists(final_file_name):
                 continue
