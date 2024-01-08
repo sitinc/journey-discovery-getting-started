@@ -27,11 +27,11 @@ import os
 import re
 import spacy
 import logging
-import matplotlib.pyplot as plt
 from collections import Counter
 
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.clusterwrap import ClusterWrap
+from interactovery.vizwrap import MetricChart
 from interactovery.utils import Utils
 
 log = logging.getLogger('transcriptLogger')
@@ -39,45 +39,6 @@ log = logging.getLogger('transcriptLogger')
 sys_prompt_gen_transcript = """You are helping me generate example transcripts.  Do not reply back with anything other 
 than the transcript content itself.  No headers or footers.  Only generate a single transcript example for each 
 response.  Separate each turn with a blank line.  Each line should start with either "USER: " or "AGENT: "."""
-
-
-def count_lines(file_path):
-    with codecs.open(file_path, 'r', 'utf-8') as file:
-        return sum(1 for line in file)
-
-
-class Utterance:
-    """
-    Utterance metadata and content.
-    """
-
-    def __init__(self,
-                 *,
-                 source: str,
-                 utterance: str,
-                 count: int):
-        """
-        Construct a new instance.
-
-        :param source: The source (file name, URL, etc.) of the utterance.
-        :param utterance: The utterance.
-        :param count: The utterance count.
-        """
-        self.source = source
-        self.utterance = utterance
-        self.count = count
-
-    def __str__(self):
-        return (f"Utterance(source={self.source}" +
-                f", utterance={self.utterance}" +
-                f", count={self.count}" +
-                ")")
-
-    def __repr__(self):
-        return (f"Utterances(source={self.source!r}" +
-                f", utterance={self.utterance!r}" +
-                f", count={self.count!r}" +
-                ")")
 
 
 class Utterances:
@@ -106,13 +67,13 @@ class Utterances:
         unique_utterance_count = len(unique_utterances)
         self.unique_utterance_count = unique_utterance_count
 
-        unique_utterance_count_map = Counter(utterances)
-        self.unique_utterance_count_map = unique_utterance_count_map
+        volume_utterance_count_map = Counter(utterances)
+        self.volume_utterance_count_map = volume_utterance_count_map
 
-        unique_utterance_counts_values = sum(unique_utterance_count_map.values())
+        volume_utterance_counts_values = sum(volume_utterance_count_map.values())
 
-        if unique_utterance_counts_values != utterance_count:
-            raise Exception(f'Consistency failure: ({unique_utterance_counts_values} != {utterance_count})')
+        if volume_utterance_counts_values != utterance_count:
+            raise Exception(f'Consistency failure: ({volume_utterance_counts_values} != {utterance_count})')
 
     def __str__(self):
         return (f"Utterances(source={self.source}" +
@@ -120,7 +81,7 @@ class Utterances:
                 f", utterance_count={self.utterance_count}" +
                 f", unique_utterances=..." +
                 f", unique_utterance_count={self.unique_utterance_count}" +
-                f", unique_utterance_count_map=..." +
+                f", volume_utterance_count_map=..." +
                 ")")
 
     def __repr__(self):
@@ -129,8 +90,26 @@ class Utterances:
                 f", utterances_count={self.utterance_count!r}" +
                 f", unique_utterances=..." +
                 f", unique_utterance_count={self.unique_utterance_count!r}" +
-                f", unique_utterance_count_map=..." +
+                f", volume_utterance_count_map=..." +
                 ")")
+
+
+def count_lines(file_path: str) -> int:
+    with codecs.open(file_path, 'r', 'utf-8') as file:
+        return sum(1 for line in file)
+
+
+def count_utterances(file_path: str, utterance_counts: Counter) -> int:
+    by_utterance_count = 0
+    with codecs.open(file_path, 'r', 'utf-8') as file:
+        for line in file:
+            line_trim = line.strip()
+            if line_trim in utterance_counts:
+                final_count = utterance_counts.get(line_trim)
+                by_utterance_count = by_utterance_count + final_count
+            else:
+                by_utterance_count = by_utterance_count + 1
+    return by_utterance_count
 
 
 class Transcripts:
@@ -184,7 +163,8 @@ class Transcripts:
                               session_id: str = None,
                               quantity: int = 5,
                               model: str = "gpt-4-1106-preview",
-                              output_dir: str = "output"
+                              output_dir: str = "output",
+                              offset: int = 0,
                               ) -> None:
         """
         Generate a series of agent transcripts and output them to files.
@@ -193,6 +173,7 @@ class Transcripts:
         :param quantity: The number of transcripts to generate.
         :param model: The OpenAI chat completion model.  Default is "gpt-4-1106-preview"
         :param output_dir: The transcript file output directory.
+        :param offset: The transcript file number offset.
         :return: transcripts will be output to file system.
         """
         if quantity > self.max_transcripts:
@@ -202,7 +183,7 @@ class Transcripts:
             session_id = Utils.new_session_id()
 
         os.makedirs(output_dir, exist_ok=True)
-        for i in range(0, quantity):
+        for i in range(offset, offset+quantity):
             final_file_name = f'{output_dir}/transcript{i}.txt'
 
             if os.path.exists(final_file_name):
@@ -412,25 +393,20 @@ class Transcripts:
 
         return utterances
 
-    def extract_entities(self, file_path: str, output_dir: str):
+    def extract_entities(self, df: pd.DataFrame, output_dir: str):
         entities_by_type = defaultdict(set)
         entities_by_source = defaultdict(set)
 
-        with codecs.open(file_path, 'r', 'utf-8') as file:
-            for line in file:
-                cols = line.split(',')
-                if len(cols) != 3:
-                    raise Exception(f"Invalid CSV transcript line {line}")
+        for row in df.itertuples():
+            source = getattr(row, 'source')
+            participant = getattr(row, 'participant')
+            utterance = getattr(row, 'utterance')
 
-                source = cols[0]
-                participant = cols[1]
-                utterance = cols[2]
-
-                doc = self.spacy_nlp(utterance)
-                for ent in doc.ents:
-                    # Add the entity text to the set corresponding to its type
-                    entities_by_type[ent.label_].add(ent.text)
-                    entities_by_source[ent.text].add(source)
+            doc = self.spacy_nlp(utterance)
+            for ent in doc.ents:
+                # Add the entity text to the set corresponding to its type
+                entities_by_type[ent.label_].add(ent.text)
+                entities_by_source[ent.text].add(source)
 
         # Create a directory to store the entity files
         os.makedirs(output_dir, exist_ok=True)
@@ -512,12 +488,6 @@ class Transcripts:
 
         clustered_sentences = cluster_client.get_clustered_sentences(utterances, cluster)
 
-        # new_labels = cluster_client.get_new_cluster_labels(
-        #     session_id=session_id,
-        #     clustered_sentences=clustered_sentences,
-        #     output_dir=output_dir,
-        # )
-
         new_definitions = cluster_client.get_new_cluster_definitions(
             session_id=session_id,
             clustered_sentences=clustered_sentences,
@@ -529,193 +499,83 @@ class Transcripts:
         cluster_client.visualize_clusters(umap_embeddings, labels, new_labels)
 
     @staticmethod
-    def visualize_intent_bars(directory: str, utterance_counts: Counter = None):
-        file_names = []
-        line_counts = []
+    def get_intent_utterance_counts(
+            *,
+            directory: str,
+            utterance_volumes: Counter = None,
+            incl_descr: bool = True,
+            incl_noise: bool = False,
+            descr_sep: str = '\n',
+    ) -> MetricChart:
+        metric_names = []
+        metric_counts = []
 
         title_key = 'Unique Utterances'
 
         for intent_dir in os.listdir(directory):
-            intent_file_name = intent_dir+'.txt'
+            intent_file_name = intent_dir + '.txt'
             intent_file_path = os.path.join(directory, intent_dir, intent_file_name)
             readme_file_path = os.path.join(directory, intent_dir, 'readme.txt')
 
             if os.path.isfile(intent_file_path):
-                if intent_dir == "-1_noise":
+                if not incl_noise and intent_dir == "-1_noise":
                     continue
 
-                description = ''
-                if os.path.isfile(readme_file_path):
-                    with codecs.open(readme_file_path, 'r', 'utf-8') as rf:
-                        readme_value = rf.read()
-                        description = '\n('+readme_value+')'
-
                 normed_file = re.sub("[0-9]+_(.*?)", "\\1", intent_dir)
-                normed_file = normed_file + description
-                file_names.append(normed_file)
+                if incl_descr:
+                    description = ''
+                    if os.path.isfile(readme_file_path):
+                        with codecs.open(readme_file_path, 'r', 'utf-8') as rf:
+                            readme_value = rf.read()
+                            description = descr_sep+'(' + readme_value + ')'
+                    normed_file = normed_file + description
+                metric_names.append(normed_file)
 
-                if utterance_counts is not None:
+                if utterance_volumes is not None:
                     title_key = 'Utterance Volume'
-                    by_utterance_count = 0
-                    with codecs.open(intent_file_path, 'r', 'utf-8') as open_file:
-                        for line in open_file:
-                            line_trim = line.strip()
-                            if line_trim in utterance_counts:
-                                final_count = utterance_counts.get(line_trim)
-                                # print(f'{line_trim} has {final_count} instances')
-                                by_utterance_count = by_utterance_count + final_count
-                            else:
-                                # print(f'{line_trim} not previously recorded')
-                                by_utterance_count = by_utterance_count + 1
-                    by_line_count = count_lines(intent_file_path)
-
-                    # print(f'intent {normed_file} - by_line_count: {by_line_count}, by_utterance_count: {by_utterance_count}')
-
-                    line_counts.append(by_utterance_count)
+                    by_volume_count = count_utterances(intent_file_path, utterance_volumes)
+                    metric_counts.append(by_volume_count)
                 else:
-                    by_line_count = count_lines(intent_file_path)
-                    line_counts.append(by_line_count)
+                    by_unique_count = count_lines(intent_file_path)
+                    metric_counts.append(by_unique_count)
 
-        # Sort the files by line count in descending order
-        sorted_data = sorted(zip(line_counts, file_names), reverse=True)
-        line_counts_sorted, file_names_sorted = zip(*sorted_data)
-
-        # Adjust the figure size to accommodate all entries
-        plt.figure(figsize=(10, len(file_names_sorted) * 0.5))
-
-        plt.barh(file_names_sorted, line_counts_sorted)
-        plt.xlabel('Utterance Count')
-        plt.title(f'Number of {title_key} per-Cluster (Sorted)')
-        plt.gca().invert_yaxis()  # Invert y-axis to have the highest value on top
-        plt.tight_layout()  # Adjust layout to fit all labels
-        plt.show()
+        metric_chart = MetricChart(
+            title=title_key,
+            metrics=metric_names,
+            counts=metric_counts,
+        )
+        return metric_chart
 
     @staticmethod
-    def visualize_intent_pie(directory, utterance_counts: Counter = None):
-        file_names = []
-        line_counts = []
+    def get_entity_value_counts(
+            *,
+            directory: str,
+            incl_descr: bool = True,
+            descr_sep: str = '\n'
+    ) -> MetricChart:
+        metric_names = []
+        metric_counts = []
 
-        title_key = 'Unique Utterances'
-
-        for intent_dir in os.listdir(directory):
-            intent_file_name = intent_dir+'.txt'
-            intent_file_path = os.path.join(directory, intent_dir, intent_file_name)
-            if os.path.isfile(intent_file_path):
-                normed_file = re.sub("[0-9]+_(.*?)", "\\1", intent_dir)
-                file_names.append(normed_file)
-
-                if utterance_counts is not None:
-                    title_key = 'Utterance Volume'
-                    by_utterance_count = 0
-                    with codecs.open(intent_file_path, 'r', 'utf-8') as open_file:
-                        for line in open_file:
-                            line_trim = line.strip()
-                            if line_trim in utterance_counts:
-                                final_count = utterance_counts.get(line_trim)
-                                # print(f'{line_trim} has {final_count} instances')
-                                by_utterance_count = by_utterance_count + final_count
-                            else:
-                                # print(f'{line_trim} not previously recorded')
-                                by_utterance_count = by_utterance_count + 1
-                    # by_line_count = count_lines(intent_file_path)
-                    # print(f'intent {normed_file} - by_lines: {by_line_count}, by_utterances: {by_utterance_count}')
-
-                    line_counts.append(by_utterance_count)
-                else:
-                    by_line_count = count_lines(intent_file_path)
-                    line_counts.append(by_line_count)
-
-        # Group slices below 1%
-        total_lines = sum(line_counts)
-        threshold = 0.01 * total_lines
-        small_files = [count for count in line_counts if count < threshold]
-        other_count = sum(small_files)
-
-        # Filter out small files and add "Other" category
-        line_counts_filtered = [count for count in line_counts if count >= threshold]
-        file_names_filtered = [file_names[i] for i, count in enumerate(line_counts) if count >= threshold]
-
-        if other_count > 0:
-            line_counts_filtered.append(other_count)
-            file_names_filtered.append("Other")
-
-        # Sort the slices by size
-        sorted_data = sorted(zip(line_counts_filtered, file_names_filtered), reverse=True)
-        line_counts_sorted, file_names_sorted = zip(*sorted_data)
-
-        # Adjust the figure size
-        plt.figure(figsize=(12, 12))
-
-        wedges, texts, autotexts = plt.pie(line_counts_sorted, autopct='%1.1f%%', startangle=140)
-
-        # Equal aspect ratio ensures the pie chart is circular.
-        plt.axis('equal')
-
-        # Add a legend
-        plt.legend(wedges, file_names_sorted, title="Files", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-
-        plt.title(f'Distribution of {title_key} by Cluster (<1% as Other, Sorted by Size)')
-        plt.show()
-
-    @staticmethod
-    def visualize_entity_bars(directory: str):
-        file_names = []
-        line_counts = []
+        title_key = 'Value Volume'
 
         for entity_dir in os.listdir(directory):
             entity_file_name = 'value_sources.csv'
             entity_file_path = os.path.join(directory, entity_dir, entity_file_name)
             if os.path.isfile(entity_file_path):
-                entity_explain = spacy.explain(entity_dir.upper())
+                entity_label = entity_dir
+                if incl_descr:
+                    entity_explain = spacy.explain(entity_dir.upper())
+                    entity_label = entity_label + descr_sep + '(' + entity_explain + ')'
 
-                file_names.append(entity_dir+'\n('+entity_explain+')')
-                line_counts.append(count_lines(entity_file_path))
+                metric_names.append(entity_label)
+                metric_counts.append(count_lines(entity_file_path))
 
-        # Sort the files by line count in descending order
-        sorted_data = sorted(zip(line_counts, file_names), reverse=True)
-        line_counts_sorted, file_names_sorted = zip(*sorted_data)
-
-        # Adjust the figure size to accommodate all entries
-        plt.figure(figsize=(10, len(file_names_sorted) * 0.5))
-
-        plt.barh(file_names_sorted, line_counts_sorted)
-        plt.xlabel('Value Count')
-        plt.title('Number of Values per-Entity (Sorted)')
-        plt.gca().invert_yaxis()  # Invert y-axis to have the highest value on top
-        plt.tight_layout()  # Adjust layout to fit all labels
-        plt.show()
-
-    @staticmethod
-    def visualize_entity_pie(directory):
-        file_names = []
-        line_counts = []
-
-        # Reading files and counting lines
-        for entity_dir in os.listdir(directory):
-            entity_file_name = 'value_sources.csv'
-            entity_file_path = os.path.join(directory, entity_dir, entity_file_name)
-            if os.path.isfile(entity_file_path):
-                file_names.append(entity_dir)
-                line_counts.append(count_lines(entity_file_path))
-
-        # Sorting the data by line counts in descending order
-        sorted_data = sorted(zip(line_counts, file_names), reverse=True)
-        line_counts_sorted, file_names_sorted = zip(*sorted_data)
-
-        # Adjust the figure size
-        plt.figure(figsize=(12, 12))
-
-        # Creating the pie chart
-        wedges, texts, autotexts = plt.pie(line_counts_sorted, autopct='%1.1f%%', startangle=140)
-
-        # Equal aspect ratio ensures the pie chart is circular
-        plt.axis('equal')
-
-        # Adding a legend to the side of the chart
-        plt.legend(wedges, file_names_sorted, title="Entity Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-
-        plt.title('Distribution of Values by Entity Type (Sorted by Size)')
-        plt.show()
+        metric_chart = MetricChart(
+            title=title_key,
+            metrics=metric_names,
+            counts=metric_counts,
+        )
+        return metric_chart
 
     @staticmethod
     def detail_entity_types(directory):
