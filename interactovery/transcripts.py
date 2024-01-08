@@ -46,6 +46,93 @@ def count_lines(file_path):
         return sum(1 for line in file)
 
 
+class Utterance:
+    """
+    Utterance metadata and content.
+    """
+
+    def __init__(self,
+                 *,
+                 source: str,
+                 utterance: str,
+                 count: int):
+        """
+        Construct a new instance.
+
+        :param source: The source (file name, URL, etc.) of the utterance.
+        :param utterance: The utterance.
+        :param count: The utterance count.
+        """
+        self.source = source
+        self.utterance = utterance
+        self.count = count
+
+    def __str__(self):
+        return (f"Utterance(source={self.source}" +
+                f", utterance={self.utterance}" +
+                f", count={self.count}" +
+                ")")
+
+    def __repr__(self):
+        return (f"Utterances(source={self.source!r}" +
+                f", utterance={self.utterance!r}" +
+                f", count={self.count!r}" +
+                ")")
+
+
+class Utterances:
+    """
+    Utterances metadata and content.
+    """
+
+    def __init__(self,
+                 *,
+                 source: str,
+                 utterances: list[str]):
+        """
+        Construct a new instance.
+
+        :param source: The source (file name, URL, etc.) of the utterances.
+        :param utterances: The utterances.
+        """
+        self.source = source
+        self.utterances = utterances
+        utterance_count = len(utterances)
+        self.utterance_count = utterance_count
+
+        utterances_set = set(utterances)
+        unique_utterances = list(utterances_set)
+        self.unique_utterances = unique_utterances
+        unique_utterance_count = len(unique_utterances)
+        self.unique_utterance_count = unique_utterance_count
+
+        unique_utterance_count_map = Counter(utterances)
+        self.unique_utterance_count_map = unique_utterance_count_map
+
+        unique_utterance_counts_values = sum(unique_utterance_count_map.values())
+
+        if unique_utterance_counts_values != utterance_count:
+            raise Exception(f'Consistency failure: ({unique_utterance_counts_values} != {utterance_count})')
+
+    def __str__(self):
+        return (f"Utterances(source={self.source}" +
+                f", utterances=..." +
+                f", utterance_count={self.utterance_count}" +
+                f", unique_utterances=..." +
+                f", unique_utterance_count={self.unique_utterance_count}" +
+                f", unique_utterance_count_map=..." +
+                ")")
+
+    def __repr__(self):
+        return (f"Utterances(source={self.source!r}" +
+                f", utterances=..." +
+                f", utterances_count={self.utterance_count!r}" +
+                f", unique_utterances=..." +
+                f", unique_utterance_count={self.unique_utterance_count!r}" +
+                f", unique_utterance_count_map=..." +
+                ")")
+
+
 class Transcripts:
     """
     Utility class for working with transcript generation and processing.
@@ -223,46 +310,148 @@ class Transcripts:
 
         return utterances
 
+    def process_ts_lines_to_csv(self,
+                                *,
+                                source: str = None,
+                                lines: list[str] = None) -> list[str]:
+        csv_lines = []
+        invalid_lines = []
+
+        for ts_line in lines:
+            valid_line = re.search("^(USER|AGENT): (.*)\\.?$", ts_line)
+            if valid_line is None:
+                empty_line = re.search("\\r?\\n", ts_line)
+                if empty_line is None:
+                    invalid_lines.append(ts_line)
+            else:
+                participant = valid_line.group(1)
+                utterances = valid_line.group(2)
+
+                utterances = re.sub(",", "", utterances)
+
+                if re.search("\\.\\s*", utterances) is not None:
+                    utterances_lines = self.split_sentences(utterances)
+
+                    for final_line in utterances_lines:
+                        csv_line = source + ',' + participant + ',' + final_line
+                        csv_lines.append(csv_line)
+                else:
+                    csv_line = source + ',' + participant + ',' + utterances
+                    csv_lines.append(csv_line)
+
+        return csv_lines
+
+    def concat_and_process_ts_to_csv(self,
+                                     *,
+                                     in_dir: str,
+                                     out_dir: str,
+                                     out_file: str) -> bool:
+        """
+        Concatenate and process the transcripts
+        :param in_dir: The input directory with transcripts.
+        :param out_dir: The output directory for the combined CSV.
+        :param out_file: The name of the combined transcripts CSV output file.
+        :return: True if no errors occurred.
+        """
+        try:
+            combined_name = f"{out_dir}/{out_file}"
+
+            os.makedirs(out_dir, exist_ok=True)
+
+            with codecs.open(combined_name, 'w+', 'utf-8') as wf:
+                wf.write("source,participant,utterance\n")
+
+            ts_files = os.listdir(in_dir)
+
+            file_progress = 0
+            file_progress_total = len(ts_files)
+
+            for ts_file in ts_files:
+                file_progress = file_progress + 1
+                Utils.progress_bar(file_progress, file_progress_total)
+                try:
+                    ts_file_path = os.path.join(in_dir, ts_file)
+                    if os.path.isfile(ts_file_path):
+                        with codecs.open(ts_file_path, 'r', 'utf-8') as rf:
+                            lines = rf.readlines()
+
+                            csv_lines = self.process_ts_lines_to_csv(
+                                source=ts_file,
+                                lines=lines,
+                            )
+
+                            csv_text = "\n".join(csv_lines)
+                            csv_text = csv_text + '\n'
+
+                            with codecs.open(combined_name, 'a+', 'utf-8') as wf:
+                                wf.write(csv_text)
+                except UnicodeDecodeError as err:
+                    log.error(f"Unicode decode error for file: {ts_file}: {err.reason}")
+                    return False
+        except Exception as err:
+            log.error(f"Unhandled exception: {err}")
+            return False
+
+        return True
+
     @staticmethod
     def get_transcript_utterances_for_party(*,
                                             party: str,
                                             file_name: str,
-                                            col_name: str,
-                                            remove_dups: bool = True) -> list[str]:
+                                            party_col_name: str = 'participant',
+                                            utter_col_name: str = 'utterance') -> Utterances:
         """Get utterances from a CSV file."""
         # Load the CSV file to a data frame.
         df = pd.read_csv(file_name)
 
         # Select 'utterance' values based on the participant mask
-        mask = df['participant'] == party
-        utterances = df.loc[mask, col_name].tolist()
+        mask = df[party_col_name] == party
+        utterances_list = df.loc[mask, utter_col_name].tolist()
 
-        # Remove duplicates, default behaviour.
-        if remove_dups:
-            utterances_set = set(utterances)
-            utterances = list(utterances_set)
+        utterances = Utterances(source=file_name, utterances=utterances_list)
 
         return utterances
 
     def extract_entities(self, file_path: str, output_dir: str):
         entities_by_type = defaultdict(set)
+        entities_by_source = defaultdict(set)
 
         with codecs.open(file_path, 'r', 'utf-8') as file:
             for line in file:
-                doc = self.spacy_nlp(line)
+                cols = line.split(',')
+                if len(cols) != 3:
+                    raise Exception(f"Invalid CSV transcript line {line}")
+
+                source = cols[0]
+                participant = cols[1]
+                utterance = cols[2]
+
+                doc = self.spacy_nlp(utterance)
                 for ent in doc.ents:
                     # Add the entity text to the set corresponding to its type
                     entities_by_type[ent.label_].add(ent.text)
+                    entities_by_source[ent.text].add(source)
 
         # Create a directory to store the entity files
         os.makedirs(output_dir, exist_ok=True)
 
         # Create and write to files for each entity type
         for entity_type, examples in entities_by_type.items():
-            file_name = f"{output_dir}/{entity_type.lower().replace(' ', '')}.txt"
-            with codecs.open(file_name, 'w', 'utf-8') as f:
+            entity_name = entity_type.lower().replace(' ', '')
+            entity_dir_path = os.path.join(output_dir, entity_name)
+            os.makedirs(entity_dir_path, exist_ok=True)
+
+            values_file_name = f"{entity_dir_path}/value_sources.csv"
+            with codecs.open(values_file_name, 'w', 'utf-8') as f:
+                f.write('source,value\n')
                 for example in examples:
-                    f.write(example + '\n')
+                    for source in entities_by_source[example]:
+                        f.write(source+','+example + '\n')
+
+            unique_file_name = f"{entity_dir_path}/unique_values.txt"
+            with codecs.open(unique_file_name, 'w', 'utf-8') as f:
+                for example in examples:
+                    f.write(example+'\n')
 
     def cluster_and_name_utterances(self,
                                     *,
@@ -323,11 +512,19 @@ class Transcripts:
 
         clustered_sentences = cluster_client.get_clustered_sentences(utterances, cluster)
 
-        new_labels = cluster_client.get_new_cluster_labels(
+        # new_labels = cluster_client.get_new_cluster_labels(
+        #     session_id=session_id,
+        #     clustered_sentences=clustered_sentences,
+        #     output_dir=output_dir,
+        # )
+
+        new_definitions = cluster_client.get_new_cluster_definitions(
             session_id=session_id,
             clustered_sentences=clustered_sentences,
             output_dir=output_dir,
         )
+
+        new_labels = [d['name'] for d in new_definitions]
 
         cluster_client.visualize_clusters(umap_embeddings, labels, new_labels)
 
@@ -338,19 +535,29 @@ class Transcripts:
 
         title_key = 'Unique Utterances'
 
-        for file in os.listdir(directory):
-            file_path = os.path.join(directory, file)
-            if os.path.isfile(file_path):
-                if file == "-1_noise.txt":
+        for intent_dir in os.listdir(directory):
+            intent_file_name = intent_dir+'.txt'
+            intent_file_path = os.path.join(directory, intent_dir, intent_file_name)
+            readme_file_path = os.path.join(directory, intent_dir, 'readme.txt')
+
+            if os.path.isfile(intent_file_path):
+                if intent_dir == "-1_noise":
                     continue
 
-                normed_file = re.sub("[0-9]+_(.*?)\\.txt", "\\1", file)
+                description = ''
+                if os.path.isfile(readme_file_path):
+                    with codecs.open(readme_file_path, 'r', 'utf-8') as rf:
+                        readme_value = rf.read()
+                        description = '\n('+readme_value+')'
+
+                normed_file = re.sub("[0-9]+_(.*?)", "\\1", intent_dir)
+                normed_file = normed_file + description
                 file_names.append(normed_file)
 
                 if utterance_counts is not None:
                     title_key = 'Utterance Volume'
                     by_utterance_count = 0
-                    with codecs.open(file_path, 'r', 'utf-8') as open_file:
+                    with codecs.open(intent_file_path, 'r', 'utf-8') as open_file:
                         for line in open_file:
                             line_trim = line.strip()
                             if line_trim in utterance_counts:
@@ -360,13 +567,13 @@ class Transcripts:
                             else:
                                 # print(f'{line_trim} not previously recorded')
                                 by_utterance_count = by_utterance_count + 1
-                    by_line_count = count_lines(file_path)
+                    by_line_count = count_lines(intent_file_path)
 
                     # print(f'intent {normed_file} - by_line_count: {by_line_count}, by_utterance_count: {by_utterance_count}')
 
                     line_counts.append(by_utterance_count)
                 else:
-                    by_line_count = count_lines(file_path)
+                    by_line_count = count_lines(intent_file_path)
                     line_counts.append(by_line_count)
 
         # Sort the files by line count in descending order
@@ -390,16 +597,17 @@ class Transcripts:
 
         title_key = 'Unique Utterances'
 
-        for file in os.listdir(directory):
-            file_path = os.path.join(directory, file)
-            if os.path.isfile(file_path):
-                normed_file = re.sub("[0-9]+_(.*?)\\.txt", "\\1", file)
+        for intent_dir in os.listdir(directory):
+            intent_file_name = intent_dir+'.txt'
+            intent_file_path = os.path.join(directory, intent_dir, intent_file_name)
+            if os.path.isfile(intent_file_path):
+                normed_file = re.sub("[0-9]+_(.*?)", "\\1", intent_dir)
                 file_names.append(normed_file)
 
                 if utterance_counts is not None:
                     title_key = 'Utterance Volume'
                     by_utterance_count = 0
-                    with codecs.open(file_path, 'r', 'utf-8') as open_file:
+                    with codecs.open(intent_file_path, 'r', 'utf-8') as open_file:
                         for line in open_file:
                             line_trim = line.strip()
                             if line_trim in utterance_counts:
@@ -409,13 +617,12 @@ class Transcripts:
                             else:
                                 # print(f'{line_trim} not previously recorded')
                                 by_utterance_count = by_utterance_count + 1
-                    by_line_count = count_lines(file_path)
-
-                    # print(f'intent {normed_file} - by_line_count: {by_line_count}, by_utterance_count: {by_utterance_count}')
+                    # by_line_count = count_lines(intent_file_path)
+                    # print(f'intent {normed_file} - by_lines: {by_line_count}, by_utterances: {by_utterance_count}')
 
                     line_counts.append(by_utterance_count)
                 else:
-                    by_line_count = count_lines(file_path)
+                    by_line_count = count_lines(intent_file_path)
                     line_counts.append(by_line_count)
 
         # Group slices below 1%
@@ -455,11 +662,14 @@ class Transcripts:
         file_names = []
         line_counts = []
 
-        for file in os.listdir(directory):
-            if os.path.isfile(os.path.join(directory, file)):
-                scrub_file = re.sub("\\.txt", "", file)
-                file_names.append(scrub_file)
-                line_counts.append(count_lines(os.path.join(directory, file)))
+        for entity_dir in os.listdir(directory):
+            entity_file_name = 'value_sources.csv'
+            entity_file_path = os.path.join(directory, entity_dir, entity_file_name)
+            if os.path.isfile(entity_file_path):
+                entity_explain = spacy.explain(entity_dir.upper())
+
+                file_names.append(entity_dir+'\n('+entity_explain+')')
+                line_counts.append(count_lines(entity_file_path))
 
         # Sort the files by line count in descending order
         sorted_data = sorted(zip(line_counts, file_names), reverse=True)
@@ -481,11 +691,12 @@ class Transcripts:
         line_counts = []
 
         # Reading files and counting lines
-        for file in os.listdir(directory):
-            if os.path.isfile(os.path.join(directory, file)):
-                scrub_file = re.sub("\\.txt", "", file)
-                file_names.append(scrub_file)
-                line_counts.append(count_lines(os.path.join(directory, file)))
+        for entity_dir in os.listdir(directory):
+            entity_file_name = 'value_sources.csv'
+            entity_file_path = os.path.join(directory, entity_dir, entity_file_name)
+            if os.path.isfile(entity_file_path):
+                file_names.append(entity_dir)
+                line_counts.append(count_lines(entity_file_path))
 
         # Sorting the data by line counts in descending order
         sorted_data = sorted(zip(line_counts, file_names), reverse=True)
@@ -515,3 +726,14 @@ class Transcripts:
             if os.path.isfile(os.path.join(directory, file)):
                 scrub_file = re.sub("\\.txt", "", file)
                 print(f"{scrub_file} - {spacy.explain(scrub_file.upper())}")
+
+    @staticmethod
+    def get_intent_names(directory: str) -> list[str]:
+        file_names = []
+
+        for file in os.listdir(directory):
+            if os.path.isdir(os.path.join(directory, file)):
+                normed_file = re.sub("[0-9]+_(.*?)", "\\1", file)
+                file_names.append(normed_file)
+
+        return file_names
