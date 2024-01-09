@@ -28,6 +28,7 @@ DIRNAME_TRANSCRIPTS_COMBINED = 'transcripts-combined'
 DIRNAME_EMBEDDINGS = 'embeddings'
 DIRNAME_CLUSTERS = 'clusters'
 DIRNAME_INTENTS = 'intents'
+DIRNAME_INTENT_GROUPINGS = 'intent-groupings'
 DIRNAME_ENTITIES = 'entities'
 
 
@@ -74,6 +75,9 @@ class Workspace:
         intents_path = os.path.join(self.work_dir, DIRNAME_INTENTS)
         self.intents_path = intents_path
 
+        intent_groupings_path = os.path.join(self.work_dir, DIRNAME_INTENT_GROUPINGS)
+        self.intent_groupings_path = intent_groupings_path
+
         entities_path = os.path.join(self.work_dir, DIRNAME_ENTITIES)
         self.entities_path = entities_path
 
@@ -83,6 +87,7 @@ class Workspace:
             ts_combined_path,
             clusters_path,
             intents_path,
+            intent_groupings_path,
             entities_path,
         ]
 
@@ -95,6 +100,7 @@ class Workspace:
                 f", ts_combined_path={self.ts_combined_path}" +
                 f", clusters_path={self.clusters_path}" +
                 f", intents_path={self.intents_path}" +
+                f", intent_groupings_path={self.intent_groupings_path}" +
                 f", entities_path={self.entities_path}" +
                 ")")
 
@@ -107,6 +113,7 @@ class Workspace:
                 f", ts_combined_path={self.ts_combined_path!r}" +
                 f", clusters_path={self.clusters_path!r}" +
                 f", intents_path={self.intents_path!r}" +
+                f", intent_groupings_path={self.intent_groupings_path!r}" +
                 f", entities_path={self.entities_path!r}" +
                 ")")
 
