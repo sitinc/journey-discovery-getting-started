@@ -687,7 +687,7 @@ class Transcripts:
                 print(f"{scrub_file} - {spacy.explain(scrub_file.upper())}")
 
     @staticmethod
-    def get_intent_names(directory: str) -> list[str]:
+    def get_intent_names(directory: str, remove_dups: bool = False) -> list[str]:
         file_names = []
 
         files = os.listdir(directory)
@@ -699,5 +699,10 @@ class Transcripts:
                     continue
                 normed_file = re.sub("[0-9]+_(.*?)", "\\1", file)
                 file_names.append(normed_file)
+
+        if remove_dups:
+            file_names_set = set(file_names)
+            final_file_names = list(file_names_set)
+            return final_file_names
 
         return file_names
