@@ -23,7 +23,6 @@
 from collections import defaultdict
 import pickle
 import pandas as pd
-import numpy as np
 import codecs
 import os
 import re
@@ -44,8 +43,15 @@ response.  Separate each turn with a blank line.  Each line should start with ei
 
 DEF_TS_COMBINED_FILENAME = 'transcripts_combined.csv'
 
-DEF_EMBEDDINGS_FILENAME = 'embeddings.npy'
+DEF_CLUSTERS_FILENAME = 'hdbscan_clusters.pkl'
+DEF_CLUSTERS_DIRNAME = 'clusters'
+
+DEF_CLUSTER_DEFS_FILENAME = 'cluster_definitions.pkl'
+
+DEF_EMBEDDINGS_FILENAME = 'embeddings.pkl'
 DEF_EMBEDDINGS_DIRNAME = 'embeddings'
+
+DEF_REDUX_EMBEDDINGS_FILENAME = 'embeddings-reduced.pkl'
 
 DEF_ENTITY_VALUE_SOURCES = 'value_sources.csv'
 DEF_ENTITY_UNIQUE_VALUES = 'unique_values.txt'
@@ -198,7 +204,7 @@ class Transcripts:
 
         for i in range(offset, offset+quantity):
             file_progress = file_progress + 1
-            Utils.progress_bar(file_progress, file_progress_total)
+            Utils.progress_bar(file_progress, file_progress_total, 'Generating transcripts')
 
             final_file_name = f'{output_dir}/transcript{i}.txt'
 
@@ -358,6 +364,9 @@ class Transcripts:
 
         out_file_path = os.path.join(out_dir, out_file)
 
+        if os.path.isfile(out_file_path):
+            return out_file_path
+
         try:
             os.makedirs(out_dir, exist_ok=True)
 
@@ -371,7 +380,7 @@ class Transcripts:
 
             for ts_file in ts_files:
                 file_progress = file_progress + 1
-                Utils.progress_bar(file_progress, file_progress_total)
+                Utils.progress_bar(file_progress, file_progress_total, 'Assembling transcripts to CSV file')
                 try:
                     ts_file_path = os.path.join(in_dir, ts_file)
                     if os.path.isfile(ts_file_path):
@@ -398,13 +407,12 @@ class Transcripts:
         return out_file_path
 
     @staticmethod
-    def get_combined_utterances(self,
-                                *,
+    def get_combined_utterances(*,
                                 in_dir: str,
-                                source: str = DEF_TS_COMBINED_FILENAME,
+                                source: str | None = DEF_TS_COMBINED_FILENAME,
                                 ) -> pd.DataFrame:
-        path = os.path.join(in_dir, source)
 
+        path = os.path.join(in_dir, source)
         df = pd.read_csv(path)
         return df
 
@@ -430,7 +438,13 @@ class Transcripts:
         entities_by_type = defaultdict(set)
         entities_by_source = defaultdict(set)
 
+        entity_progress = 0
+        entity_progress_total = df.shape[0]
+
         for row in df.itertuples():
+            entity_progress = entity_progress + 1
+            Utils.progress_bar(entity_progress, entity_progress_total, 'Extracting known entities')
+
             source = getattr(row, 'source')
             participant = getattr(row, 'participant')
             utterance = getattr(row, 'utterance')
@@ -502,23 +516,40 @@ class Transcripts:
 
         # Create/Load/Store the embeddings.
         embeddings_file_name = DEF_EMBEDDINGS_FILENAME
-        embeddings_dir = os.path.join(workspace_dir, 'embeddings')
+        embeddings_dir = os.path.join(workspace_dir, DEF_EMBEDDINGS_DIRNAME)
         embeddings_file_path = os.path.join(embeddings_dir, embeddings_file_name)
 
         if os.path.isfile(embeddings_file_path):
             log.info(f"{session_id} | cluster_and_name_utterances | Loading embeddings from {embeddings_file_name}")
-            embeddings = np.load(embeddings_file_path)
+            # embeddings = np.load(embeddings_file_path)
+            with open(embeddings_file_path, 'rb') as file:
+                embeddings = pickle.load(file)
         else:
             log.info(f"{session_id} | cluster_and_name_utterances | Generating embeddings with 'all-MiniLM-L6-v2'")
             embeddings = cluster_client.get_embeddings(utterances=utterances)
-            np.save(embeddings_file_path, embeddings)
+            # np.save(embeddings_file_path, embeddings)
+            with open(embeddings_file_path, 'wb') as file:
+                pickle.dump(embeddings, file)
 
         # Reduce dimensionality.
-        umap_embeddings = cluster_client.reduce_dimensionality(embeddings=embeddings)
+        redux_file_name = DEF_REDUX_EMBEDDINGS_FILENAME
+        redux_file_path = os.path.join(embeddings_dir, redux_file_name)
+
+        if os.path.isfile(redux_file_path):
+            log.info(f"{session_id} | cluster_and_name_utterances | Loading reduced embeddings from {redux_file_name}")
+            # umap_embeddings = np.load(redux_file_path)
+            with open(redux_file_path, 'rb') as file:
+                umap_embeddings = pickle.load(file)
+        else:
+            log.info(f"{session_id} | cluster_and_name_utterances | Reducing dimensionality with UMAP")
+            umap_embeddings = cluster_client.reduce_dimensionality(embeddings=embeddings)
+            # np.save(redux_file_path, embeddings)
+            with open(redux_file_path, 'wb') as file:
+                pickle.dump(umap_embeddings, file)
 
         # Create/Load/Store the cluster results.
-        clusters_file_name = 'hdbscan_clusters.pkl'
-        clusters_dir = os.path.join(workspace_dir, 'clusters')
+        clusters_file_name = DEF_CLUSTERS_FILENAME
+        clusters_dir = os.path.join(workspace_dir, DEF_CLUSTERS_DIRNAME)
         clusters_file_path = os.path.join(clusters_dir, clusters_file_name)
         if os.path.isfile(clusters_file_path):
             log.info(f"{session_id} | cluster_and_name_utterances | Loading clusters from {clusters_file_name}")
@@ -543,15 +574,28 @@ class Transcripts:
 
         clustered_sentences = cluster_client.get_clustered_sentences(utterances, cluster)
 
-        new_definitions = cluster_client.get_new_cluster_definitions(
-            session_id=session_id,
-            clustered_sentences=clustered_sentences,
-            output_dir=output_dir,
-        )
+        definitions_file_name = DEF_CLUSTER_DEFS_FILENAME
+        definitions_file_path = os.path.join(clusters_dir, definitions_file_name)
+        if os.path.isfile(definitions_file_path):
+            log.info(f"{session_id} | cluster_and_name_utterances | Loading definitions from {definitions_file_name}")
+            with open(definitions_file_path, 'rb') as file:
+                new_definitions = pickle.load(file)
+
+        else:
+            log.info(f"{session_id} | cluster_and_name_utterances | Generating definitions from LLMs")
+            new_definitions = cluster_client.get_new_cluster_definitions(
+                session_id=session_id,
+                clustered_sentences=clustered_sentences,
+                output_dir=output_dir,
+            )
+            with open(definitions_file_path, 'wb') as file:
+                pickle.dump(new_definitions, file)
 
         new_labels = [d['name'] for d in new_definitions]
 
-        cluster_client.visualize_clusters(umap_embeddings, labels, new_labels)
+        log.info(f"{session_id} | cluster_and_name_utterances | Visualizing clusters")
+
+        cluster_client.visualize_clusters(umap_embeddings, labels, new_labels, silhouette_avg)
 
     @staticmethod
     def get_intent_utterance_counts(
@@ -646,8 +690,13 @@ class Transcripts:
     def get_intent_names(directory: str) -> list[str]:
         file_names = []
 
-        for file in os.listdir(directory):
+        files = os.listdir(directory)
+        files.sort()
+
+        for file in files:
             if os.path.isdir(os.path.join(directory, file)):
+                if file == '-1_noise':
+                    continue
                 normed_file = re.sub("[0-9]+_(.*?)", "\\1", file)
                 file_names.append(normed_file)
 
