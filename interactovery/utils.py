@@ -21,9 +21,9 @@
 # SOFTWARE.
 
 import uuid
+import os
 
 import sys
-from IPython.display import display, clear_output
 
 
 class Utils:
@@ -40,12 +40,13 @@ class Utils:
         return str(uuid.uuid4())
 
     @staticmethod
-    def progress_bar(progress: int, total: int):
+    def progress_bar(progress: int, total: int, description: str = ''):
         """
         Displays or updates a console progress bar.
 
         :param progress: Current progress (should not exceed 'total').
         :param total: Total steps of the progress bar.
+        :param description: The description of the progression activity.
         """
         bar_length = 40  # Modify this to change the length of the progress bar
         progress_length = int(round(bar_length * progress / float(total)))
@@ -54,8 +55,17 @@ class Utils:
         bar = '#' * progress_length + '-' * (bar_length - progress_length)
 
         if 'ipykernel' in sys.modules:  # Jupyter Notebook environment
+            from IPython.display import display, clear_output
             clear_output(wait=True)
-            display(f'[{bar}] {percent}%')
+            display(f'[{bar}] {percent}% {description}')
         else:  # Console environment
-            sys.stdout.write(f'\r[{bar}] {percent}%')
+            sys.stdout.write(f'\r[{bar}] {percent}% {description}')
             sys.stdout.flush()
+
+    @staticmethod
+    def contains_directories(directory: str) -> bool:
+        with os.scandir(directory) as it:
+            for entry in it:
+                if entry.is_dir():
+                    return True
+        return False
