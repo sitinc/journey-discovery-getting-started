@@ -57,7 +57,7 @@ parameter, "intent", is a string representing the intent name.  The second param
   words.  The intent name should be three words maximum in camel case with no spaces or special characters.  Don't use 
   the word \"intent\" in the intent name.\n\n"""
 
-sys_prompt_group_intents = """You are helping me group semantically similar intents together."""
+sys_prompt_group_intents = """You are helping me group semantically similar intents_old together."""
 usr_prompt_group_intents = """Below is a list of intent names that were generated based on utterances having semantic 
 similarity.  Reply back with a JSON object with a property name representing each group, and it's value set to the 
 array of grouped intent names.  Don't put the JSON object into a string and don't wrap it with ```json or backticks.
@@ -249,8 +249,14 @@ class ClusterWrap:
 
         os.makedirs(output_dir, exist_ok=True)
 
+        cluster_progress = 0
+        cluster_progress_total = len(clustered_sentences.items())
+
         # Display clusters
         for i, cluster_entries in clustered_sentences.items():
+            cluster_progress = cluster_progress + 1
+            Utils.progress_bar(cluster_progress, cluster_progress_total, 'Generating names for clusters')
+
             utterances_text = ''
             all_utterances_text = ''
 
@@ -276,7 +282,7 @@ class ClusterWrap:
 
             # Generate and save the new clusters name.
             session_id = Utils.new_session_id()
-            log.info(f"{session_id} | get_new_cluster_labels | Generating name for Cluster #{i}")
+            log.debug(f"{session_id} | get_new_cluster_labels | Generating name for Cluster #{i}")
             new_cluster_definition_str = self.get_cluster_definition(utterances=utterances_text)
             new_cluster_definition = json.loads(new_cluster_definition_str)
 
@@ -331,12 +337,13 @@ class ClusterWrap:
         return result
 
     @staticmethod
-    def visualize_clusters(embeddings, labels, new_labels) -> None:
+    def visualize_clusters(embeddings, labels, new_labels, silhouette_avg) -> None:
         """
         Visualize the named clusters on a graph.
         :param embeddings: The embeddings
         :param labels: The cluster labels
         :param new_labels: The generated cluster labels
+        :param silhouette_avg: The silhouette avg
         """
         # Visualize the clusters.
         tsne = TSNE(n_components=2, random_state=42)
@@ -356,7 +363,7 @@ class ClusterWrap:
             centroid = np.mean(proj_2d[mask], axis=0)
             plt.text(centroid[0], centroid[1], new_label, fontdict={'weight': 'bold', 'size': 10})
 
-        plt.title('Clusters of Named Transcript Utterances (2D t-SNE Projection)', fontsize=15)
+        plt.title(f'Clusters of Utterances - Silhouette - {silhouette_avg:.2f} - (2D t-SNE Projection)', fontsize=15)
         plt.xlabel('t-SNE Dimension 1')
         plt.ylabel('t-SNE Dimension 2')
         plt.colorbar(label='Cluster')
