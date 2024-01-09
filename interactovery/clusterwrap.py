@@ -406,7 +406,9 @@ class ClusterWrap:
         )
         cmd_result = self.openai.execute(cmd)
         result = cmd_result.result
-        log.info(f"{session_id} | get_grouped_intent_names | result: {result}")
+        log.debug(f"{session_id} | get_grouped_intent_names | result: {result}")
 
         with codecs.open(f'{output_dir}/cluster_groupings.txt', 'w', 'utf-8') as f:
             f.write(result)
+
+        return result
