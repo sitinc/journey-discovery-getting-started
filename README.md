@@ -41,7 +41,7 @@ I will be continuing to improve and expand the capabilities of the notebooks and
 any commitments on functionality or timelines.
 
 
-### Interactology Python module
+### Interactovery Python module
 
 All underlying Python code necessary to run the notebook is included within this project for simplicity, but you can also import the packaged interactovery Python module from PyPI directly into your projects if you wish to re-use any of its components:
 
