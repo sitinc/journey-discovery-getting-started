@@ -20,7 +20,7 @@
 import os
 import os.path
 
-from interactovery.utils import Utils
+from interactovery import Utils
 
 
 DIRNAME_DEF_WORKSPACES = 'workspaces'

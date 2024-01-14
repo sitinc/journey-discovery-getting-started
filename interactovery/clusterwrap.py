@@ -23,8 +23,7 @@ import os
 
 import json
 
-from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
-from interactovery.utils import Utils
+from interactovery import Utils, OpenAiWrap, CreateCompletions
 
 import logging
 from sentence_transformers import SentenceTransformer

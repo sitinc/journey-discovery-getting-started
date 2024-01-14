@@ -30,10 +30,7 @@ import spacy
 import logging
 from collections import Counter
 
-from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
-from interactovery.clusterwrap import ClusterWrap
-from interactovery.vizwrap import MetricChart, VizWrap
-from interactovery.utils import Utils
+from interactovery import Utils, ClusterWrap, OpenAiWrap, CreateCompletions, MetricChart, VizWrap
 
 log = logging.getLogger('transcriptLogger')
 

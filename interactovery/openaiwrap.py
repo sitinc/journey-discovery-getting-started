@@ -26,7 +26,7 @@ import openai
 from openai import OpenAI, OpenAIError
 from requests import RequestException
 
-from interactovery.utils import Utils
+from interactovery import Utils
 
 import random
 import time
