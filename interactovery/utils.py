@@ -90,7 +90,7 @@ class Utils:
             for entry in entries:
                 dir_progress = dir_progress + 1
                 if incl_progress:
-                    Utils.progress_bar(dir_progress, dir_progress_total, 'Copying files')
+                    Utils.progress_bar(dir_progress, dir_progress_total, f'Copying file {entry.name}')
                 if entry.is_file():
                     source_file = os.path.join(src_dir, entry.name)
                     destination_file = os.path.join(dst_dir, entry.name)
