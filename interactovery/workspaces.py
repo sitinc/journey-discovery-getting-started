@@ -145,7 +145,9 @@ class WorkspaceManager:
     def __repr__(self):
         return f"WorkspaceManager(root_dir={self.root_dir!r})"
 
-    def create(self, name: str) -> Workspace:
+    def create(self,
+               *,
+               name: str) -> Workspace:
         """
         Create a new workspace and return it.
 
