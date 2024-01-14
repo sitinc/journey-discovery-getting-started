@@ -63,17 +63,6 @@ class Utils:
             sys.stdout.flush()
 
     @staticmethod
-    def contains_directories(directory: str) -> bool:
-        """
-        Checks if a directory contains a directory.
-        """
-        with os.scandir(directory) as it:
-            for entry in it:
-                if entry.is_dir():
-                    return True
-        return False
-
-    @staticmethod
     def copy_dir(*,
                  src_dir: str = None,
                  dst_dir: str = None,
