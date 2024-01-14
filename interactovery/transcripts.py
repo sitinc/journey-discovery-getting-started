@@ -21,7 +21,6 @@
 # SOFTWARE.
 
 from collections import defaultdict
-import pickle
 import pandas as pd
 import codecs
 import os
@@ -516,52 +515,27 @@ class Transcripts:
         embeddings_dir = os.path.join(workspace_dir, DEF_EMBEDDINGS_DIRNAME)
         embeddings_file_path = os.path.join(embeddings_dir, embeddings_file_name)
 
-        if os.path.isfile(embeddings_file_path):
-            log.info(f"{session_id} | cluster_and_name_utterances | Loading embeddings from {embeddings_file_name}")
-            # embeddings = np.load(embeddings_file_path)
-            with open(embeddings_file_path, 'rb') as file:
-                embeddings = pickle.load(file)
-        else:
-            log.info(f"{session_id} | cluster_and_name_utterances | Generating embeddings with 'all-MiniLM-L6-v2'")
-            embeddings = cluster_client.get_embeddings(utterances=utterances)
-            # np.save(embeddings_file_path, embeddings)
-            with open(embeddings_file_path, 'wb') as file:
-                pickle.dump(embeddings, file)
+        log.info(f"{session_id} | cluster_and_name_utterances | Generating embeddings with 'all-MiniLM-L6-v2'")
+        embeddings = cluster_client.get_embeddings(utterances=utterances)
 
         # Reduce dimensionality.
         redux_file_name = DEF_REDUX_EMBEDDINGS_FILENAME
         redux_file_path = os.path.join(embeddings_dir, redux_file_name)
 
-        if os.path.isfile(redux_file_path):
-            log.info(f"{session_id} | cluster_and_name_utterances | Loading reduced embeddings from {redux_file_name}")
-            # umap_embeddings = np.load(redux_file_path)
-            with open(redux_file_path, 'rb') as file:
-                umap_embeddings = pickle.load(file)
-        else:
-            log.info(f"{session_id} | cluster_and_name_utterances | Reducing dimensionality with UMAP")
-            umap_embeddings = cluster_client.reduce_dimensionality(embeddings=embeddings)
-            # np.save(redux_file_path, embeddings)
-            with open(redux_file_path, 'wb') as file:
-                pickle.dump(umap_embeddings, file)
+        log.info(f"{session_id} | cluster_and_name_utterances | Reducing dimensionality with UMAP")
+        umap_embeddings = cluster_client.reduce_dimensionality(embeddings=embeddings)
 
         # Create/Load/Store the cluster results.
         clusters_file_name = DEF_CLUSTERS_FILENAME
         clusters_dir = os.path.join(workspace_dir, DEF_CLUSTERS_DIRNAME)
         clusters_file_path = os.path.join(clusters_dir, clusters_file_name)
-        if os.path.isfile(clusters_file_path):
-            log.info(f"{session_id} | cluster_and_name_utterances | Loading clusters from {clusters_file_name}")
-            with open(clusters_file_path, 'rb') as file:
-                cluster = pickle.load(file)
-        else:
-            log.info(f"{session_id} | cluster_and_name_utterances | Predicting cluster labels with HDBSCAN")
-            cluster = cluster_client.hdbscan(
-                embeddings=umap_embeddings,
-                min_cluster_size=min_cluster_size,
-                min_samples=min_samples,
-                epsilon=epsilon,
-            )
-            with open(clusters_file_path, 'wb') as file:
-                pickle.dump(cluster, file)
+        log.info(f"{session_id} | cluster_and_name_utterances | Predicting cluster labels with HDBSCAN")
+        cluster = cluster_client.hdbscan(
+            embeddings=umap_embeddings,
+            min_cluster_size=min_cluster_size,
+            min_samples=min_samples,
+            epsilon=epsilon,
+        )
 
         labels = cluster.labels_
 
@@ -573,20 +547,12 @@ class Transcripts:
 
         definitions_file_name = DEF_CLUSTER_DEFS_FILENAME
         definitions_file_path = os.path.join(clusters_dir, definitions_file_name)
-        if os.path.isfile(definitions_file_path):
-            log.info(f"{session_id} | cluster_and_name_utterances | Loading definitions from {definitions_file_name}")
-            with open(definitions_file_path, 'rb') as file:
-                new_definitions = pickle.load(file)
-
-        else:
-            log.info(f"{session_id} | cluster_and_name_utterances | Generating definitions from LLMs")
-            new_definitions = cluster_client.get_new_cluster_definitions(
-                session_id=session_id,
-                clustered_sentences=clustered_sentences,
-                output_dir=output_dir,
-            )
-            with open(definitions_file_path, 'wb') as file:
-                pickle.dump(new_definitions, file)
+        log.info(f"{session_id} | cluster_and_name_utterances | Generating definitions from LLMs")
+        new_definitions = cluster_client.get_new_cluster_definitions(
+            session_id=session_id,
+            clustered_sentences=clustered_sentences,
+            output_dir=output_dir,
+        )
 
         new_labels = [d['name'] for d in new_definitions]
 
