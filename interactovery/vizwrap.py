@@ -21,12 +21,15 @@
 # SOFTWARE.
 
 
+# For visualization
+import numpy as np
+from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 
 
 class MetricChart:
     """
-    Metric count class.
+    Metric chart class.
     """
 
     def __init__(self,
@@ -189,10 +192,10 @@ class VizWrap:
         plt.show()
 
     @staticmethod
-    def visualize_intent_bars(*,
-                              chart: MetricChart,
-                              sort_dsc: bool = True,
-                              ):
+    def show_intent_bars(*,
+                         chart: MetricChart,
+                         sort_dsc: bool = True,
+                         ):
         final_chart = MetricChart(
             title=f'Number of {chart.title} per-Cluster (Sorted)',
             legend_title='Utterance Count',
@@ -202,11 +205,11 @@ class VizWrap:
         VizWrap.show_horiz_bars(chart=final_chart, sort_dsc=sort_dsc)
 
     @staticmethod
-    def visualize_intent_pie(*,
-                             chart: MetricChart,
-                             sort_dsc: bool = True,
-                             group_threshold: float = None,
-                             ):
+    def show_intent_pie(*,
+                        chart: MetricChart,
+                        sort_dsc: bool = True,
+                        group_threshold: float = None,
+                        ):
         final_chart = chart.clone(
             title=f'Distribution of {chart.title} by Clustered Intent',
             legend_title='Intents',
@@ -214,10 +217,10 @@ class VizWrap:
         VizWrap.show_pie(chart=final_chart, sort_dsc=sort_dsc, group_threshold=group_threshold)
 
     @staticmethod
-    def visualize_entity_bars(*,
-                              chart: MetricChart,
-                              sort_dsc: bool = True,
-                              ):
+    def show_entity_bars(*,
+                         chart: MetricChart,
+                         sort_dsc: bool = True,
+                         ):
         final_chart = chart.clone(
             title='Number of Values per-Entity (Sorted)',
             legend_title='Value Count',
@@ -225,13 +228,46 @@ class VizWrap:
         VizWrap.show_horiz_bars(chart=final_chart, sort_dsc=sort_dsc)
 
     @staticmethod
-    def visualize_entity_pie(*,
-                             chart: MetricChart,
-                             sort_dsc: bool = True,
-                             group_threshold: float = None,
-                             ):
+    def show_entity_pie(*,
+                        chart: MetricChart,
+                        sort_dsc: bool = True,
+                        group_threshold: float = None,
+                        ):
         final_chart = chart.clone(
             title='Distribution of Values by Entity Type (Sorted by Size)',
             legend_title='Entities',
         )
         VizWrap.show_pie(chart=final_chart, sort_dsc=sort_dsc, group_threshold=group_threshold)
+
+    @staticmethod
+    def show_cluster_scatter(embeddings, labels, new_labels, silhouette_avg) -> None:
+        """
+        Visualize the named clusters of embeddings on a scatter plot chart.
+        :param embeddings: The embeddings
+        :param labels: The cluster labels
+        :param new_labels: The friendly cluster labels
+        :param silhouette_avg: The silhouette avg
+        """
+        # Visualize the clusters.
+        tsne = TSNE(n_components=2, random_state=42)
+        proj_2d = tsne.fit_transform(embeddings)
+
+        # Plotting
+        plt.figure(figsize=(20, 16))
+        plt.scatter(proj_2d[:, 0], proj_2d[:, 1], c=labels, cmap='Spectral', s=50, alpha=0.7)
+
+        # Calculate the centroid of each clusters
+        for i in np.unique(labels):
+            if i == -1:
+                # Skip noise if necessary
+                continue
+            mask = labels == i
+            new_label = new_labels[i]
+            centroid = np.mean(proj_2d[mask], axis=0)
+            plt.text(centroid[0], centroid[1], new_label, fontdict={'weight': 'bold', 'size': 10})
+
+        plt.title(f'Clusters of Utterances - Silhouette - {silhouette_avg:.2f} - (2D t-SNE Projection)', fontsize=15)
+        plt.xlabel('t-SNE Dimension 1')
+        plt.ylabel('t-SNE Dimension 2')
+        plt.colorbar(label='Cluster')
+        plt.show()

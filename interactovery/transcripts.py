@@ -32,7 +32,7 @@ from collections import Counter
 
 from interactovery.openaiwrap import OpenAiWrap, CreateCompletions
 from interactovery.clusterwrap import ClusterWrap
-from interactovery.vizwrap import MetricChart
+from interactovery.vizwrap import MetricChart, VizWrap
 from interactovery.utils import Utils
 
 log = logging.getLogger('transcriptLogger')
@@ -595,7 +595,7 @@ class Transcripts:
 
         log.info(f"{session_id} | cluster_and_name_utterances | Visualizing clusters")
 
-        cluster_client.visualize_clusters(umap_embeddings, labels, new_labels, silhouette_avg)
+        VizWrap.show_cluster_scatter(umap_embeddings, labels, new_labels, silhouette_avg)
 
     @staticmethod
     def get_intent_utterance_counts(

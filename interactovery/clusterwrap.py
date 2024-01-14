@@ -35,11 +35,6 @@ import codecs
 import spacy
 import pandas as pd
 
-# For visualization
-import numpy as np
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-
 
 # Initialize the logger.
 log = logging.getLogger('clusterLogger')
@@ -336,39 +331,6 @@ class ClusterWrap:
         result = result.strip('```json')
         result = result.strip('`')
         return result
-
-    @staticmethod
-    def visualize_clusters(embeddings, labels, new_labels, silhouette_avg) -> None:
-        """
-        Visualize the named clusters on a graph.
-        :param embeddings: The embeddings
-        :param labels: The cluster labels
-        :param new_labels: The generated cluster labels
-        :param silhouette_avg: The silhouette avg
-        """
-        # Visualize the clusters.
-        tsne = TSNE(n_components=2, random_state=42)
-        proj_2d = tsne.fit_transform(embeddings)
-
-        # Plotting
-        plt.figure(figsize=(20, 16))
-        plt.scatter(proj_2d[:, 0], proj_2d[:, 1], c=labels, cmap='Spectral', s=50, alpha=0.7)
-
-        # Calculate the centroid of each clusters
-        for i in np.unique(labels):
-            if i == -1:
-                # Skip noise if necessary
-                continue
-            mask = labels == i
-            new_label = new_labels[i]
-            centroid = np.mean(proj_2d[mask], axis=0)
-            plt.text(centroid[0], centroid[1], new_label, fontdict={'weight': 'bold', 'size': 10})
-
-        plt.title(f'Clusters of Utterances - Silhouette - {silhouette_avg:.2f} - (2D t-SNE Projection)', fontsize=15)
-        plt.xlabel('t-SNE Dimension 1')
-        plt.ylabel('t-SNE Dimension 2')
-        plt.colorbar(label='Cluster')
-        plt.show()
 
     def get_grouped_intent_names(self,
                                  *,
