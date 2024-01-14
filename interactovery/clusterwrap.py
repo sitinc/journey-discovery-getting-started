@@ -33,6 +33,7 @@ import umap
 from sklearn.metrics import silhouette_score
 import codecs
 import spacy
+import pandas as pd
 
 # For visualization
 import numpy as np
@@ -411,4 +412,14 @@ class ClusterWrap:
         with codecs.open(f'{output_dir}/cluster_groupings.txt', 'w', 'utf-8') as f:
             f.write(result)
 
+        # Convert the dictionary to a DataFrame
+        max_len = max(len(v) for v in result.values())
+        for key in result:
+            result[key] += [''] * (max_len - len(result[key]))
+
+        df = pd.DataFrame(result)
+
+        # Save the DataFrame to a CSV file
+        csv_file_path = os.path.join(output_dir, 'intent_groupings_before.csv')
+        df.to_csv(csv_file_path, index=False)
         return result
