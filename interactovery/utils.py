@@ -24,6 +24,7 @@ import uuid
 import os
 import sys
 import shutil
+import codecs
 
 
 class Utils:
@@ -95,3 +96,9 @@ class Utils:
                     source_file = os.path.join(src_dir, entry.name)
                     destination_file = os.path.join(dst_dir, entry.name)
                     shutil.copy2(source_file, destination_file)
+
+    @staticmethod
+    def count_file_lines(file_path: str) -> int:
+        """Utility function to count the number of lines in a file."""
+        with codecs.open(file_path, 'r', 'utf-8') as file:
+            return sum(1 for _ in file)

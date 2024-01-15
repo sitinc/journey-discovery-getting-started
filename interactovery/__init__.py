@@ -25,3 +25,4 @@ from .vizwrap import MetricChart, VizWrap
 from .clusterwrap import ClusterWrap
 from .transcripts import Utterances, Transcripts
 from .workspaces import WorkspaceManager, Workspace
+from .interactovery import Interactovery

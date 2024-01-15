@@ -240,12 +240,17 @@ class VizWrap:
         VizWrap.show_pie(chart=final_chart, sort_dsc=sort_dsc, group_threshold=group_threshold)
 
     @staticmethod
-    def show_cluster_scatter(embeddings, labels, new_labels, silhouette_avg) -> None:
+    def show_cluster_scatter(*,
+                             embeddings,
+                             labels,
+                             intent_labels=None,
+                             silhouette_avg,
+                             ) -> None:
         """
         Visualize the named clusters of embeddings on a scatter plot chart.
         :param embeddings: The embeddings
         :param labels: The cluster labels
-        :param new_labels: The friendly cluster labels
+        :param intent_labels: The cluster intent labels
         :param silhouette_avg: The silhouette avg
         """
         # Visualize the clusters.
@@ -257,14 +262,20 @@ class VizWrap:
         plt.scatter(proj_2d[:, 0], proj_2d[:, 1], c=labels, cmap='Spectral', s=50, alpha=0.7)
 
         # Calculate the centroid of each clusters
-        for i in np.unique(labels):
-            if i == -1:
-                # Skip noise if necessary
-                continue
-            mask = labels == i
-            new_label = new_labels[i]
-            centroid = np.mean(proj_2d[mask], axis=0)
-            plt.text(centroid[0], centroid[1], new_label, fontdict={'weight': 'bold', 'size': 10})
+        if intent_labels is not None:
+            for i in np.unique(labels):
+                mask = labels == i
+                label = intent_labels[i]
+                centroid = np.mean(proj_2d[mask], axis=0)
+                plt.text(centroid[0], centroid[1], label, fontdict={'weight': 'bold', 'size': 10})
+        else:
+            for i in np.unique(labels):
+                mask = labels == i
+                label = labels[i]
+                if label == -1:  # Re-label raw utterance label for noise.
+                    label = 'Noise'
+                centroid = np.mean(proj_2d[mask], axis=0)
+                plt.text(centroid[0], centroid[1], label, fontdict={'weight': 'bold', 'size': 10})
 
         plt.title(f'Clusters of Utterances - Silhouette - {silhouette_avg:.2f} - (2D t-SNE Projection)', fontsize=15)
         plt.xlabel('t-SNE Dimension 1')

@@ -27,8 +27,17 @@ DIRNAME_DEF_WORKSPACES = 'workspaces'
 
 DIRNAME_TRANSCRIPTS = 'transcripts'
 DIRNAME_TRANSCRIPTS_COMBINED = 'transcripts-combined'
+FILENAME_TRANSCRIPTS_COMBINED = 'transcripts-combined.csv'
+
 DIRNAME_EMBEDDINGS = 'embeddings'
+FILENAME_EMBEDDINGS = 'embeddings.pkl'
+FILENAME_EMBEDDINGS_REDUX = 'embeddings-reduced.pkl'
+
 DIRNAME_CLUSTERS = 'clusters'
+FILENAME_CLUSTERS = 'clusters.pkl'
+FILENAME_CLUSTER_DEFS = 'cluster-definitions.pkl'
+DIRNAME_CLUSTERS_RAW = 'clusters-raw'
+
 DIRNAME_INTENTS = 'intents'
 DIRNAME_INTENT_GROUPINGS = 'intent-groupings'
 DIRNAME_ENTITIES = 'entities'
@@ -42,6 +51,7 @@ class Workspace:
                  *,
                  name: str = None,
                  work_dir: str = None,
+                 **kwargs,
                  ):
         """
         Construct a new instance.
@@ -58,8 +68,20 @@ class Workspace:
         self.name = name
         self.work_dir = work_dir
 
-        embeddings_path = os.path.join(self.work_dir, DIRNAME_EMBEDDINGS)
-        self.embeddings_path = embeddings_path
+        embeddings_dir = kwargs.get('embeddings_dir', DIRNAME_EMBEDDINGS)
+        self.embeddings_dir = embeddings_dir
+        embeddings_dir_path = os.path.join(self.work_dir, embeddings_dir)
+        self.embeddings_dir_path = embeddings_dir_path
+
+        embeddings_file = kwargs.get('embeddings_file', FILENAME_EMBEDDINGS)
+        self.embeddings_file = embeddings_file
+        embeddings_file_path = os.path.join(embeddings_dir_path, embeddings_file)
+        self.embeddings_file_path = embeddings_file_path
+
+        embeddings_redux_file = kwargs.get('embeddings_redux_file', FILENAME_EMBEDDINGS_REDUX)
+        self.embeddings_redux_file = embeddings_redux_file
+        embeddings_redux_file_path = os.path.join(embeddings_dir_path, embeddings_redux_file)
+        self.embeddings_redux_file_path = embeddings_redux_file_path
 
         transcripts_path = os.path.join(self.work_dir, DIRNAME_TRANSCRIPTS)
         self.transcripts_path = transcripts_path
@@ -67,11 +89,28 @@ class Workspace:
         ts_combined_path = os.path.join(self.work_dir, DIRNAME_TRANSCRIPTS_COMBINED)
         self.ts_combined_path = ts_combined_path
 
-        clusters_path = os.path.join(self.work_dir, DIRNAME_CLUSTERS)
-        self.clusters_path = clusters_path
+        cluster_dir = kwargs.get('cluster_dir', DIRNAME_CLUSTERS)
+        self.cluster_dir = cluster_dir
+        clusters_dir_path = os.path.join(self.work_dir, cluster_dir)
+        self.clusters_dir_path = clusters_dir_path
 
-        intents_path = os.path.join(self.work_dir, DIRNAME_INTENTS)
-        self.intents_path = intents_path
+        cluster_scan_file = kwargs.get('cluster_scan_file', FILENAME_CLUSTERS)
+        self.cluster_scan_file = cluster_scan_file
+        cluster_scan_file_path = os.path.join(clusters_dir_path, cluster_scan_file)
+        self.cluster_scan_file_path = cluster_scan_file_path
+
+        cluster_defs_file = kwargs.get('cluster_defs_file', FILENAME_CLUSTER_DEFS)
+        self.cluster_defs_file = cluster_defs_file
+        cluster_defs_file_path = os.path.join(clusters_dir_path, cluster_defs_file)
+        self.cluster_defs_file_path = cluster_defs_file_path
+
+        cluster_raw_dir = kwargs.get('cluster_raw_dir', DIRNAME_CLUSTERS_RAW)
+        self.cluster_raw_dir = cluster_raw_dir
+        cluster_raw_dir_path = os.path.join(self.work_dir, cluster_raw_dir)
+        self.cluster_raw_dir_path = cluster_raw_dir_path
+
+        intents_dir_path = os.path.join(self.work_dir, DIRNAME_INTENTS)
+        self.intents_dir_path = intents_dir_path
 
         intent_groupings_path = os.path.join(self.work_dir, DIRNAME_INTENT_GROUPINGS)
         self.intent_groupings_path = intent_groupings_path
@@ -80,11 +119,12 @@ class Workspace:
         self.entities_path = entities_path
 
         self.workspace_dirs = [
-            embeddings_path,
+            embeddings_dir_path,
             transcripts_path,
             ts_combined_path,
-            clusters_path,
-            intents_path,
+            clusters_dir_path,
+            cluster_raw_dir_path,
+            intents_dir_path,
             intent_groupings_path,
             entities_path,
         ]
@@ -92,11 +132,12 @@ class Workspace:
     def __str__(self):
         return (f"Workspace(name={self.name}" +
                 f", work_dir={self.work_dir}" +
-                f", embeddings_path={self.embeddings_path}" +
+                f", embeddings_dir_path={self.embeddings_dir_path}" +
                 f", transcripts_path={self.transcripts_path}" +
                 f", ts_combined_path={self.ts_combined_path}" +
-                f", clusters_path={self.clusters_path}" +
-                f", intents_path={self.intents_path}" +
+                f", clusters_dir_path={self.clusters_dir_path}" +
+                f", cluster_raw_dir_path={self.cluster_raw_dir_path}" +
+                f", intents_dir_path={self.intents_dir_path}" +
                 f", intent_groupings_path={self.intent_groupings_path}" +
                 f", entities_path={self.entities_path}" +
                 ")")
@@ -104,11 +145,12 @@ class Workspace:
     def __repr__(self):
         return (f"Workspace(name={self.name!r}" +
                 f", work_dir={self.work_dir!r}" +
-                f", embeddings_path={self.embeddings_path!r}" +
+                f", embeddings_dir_path={self.embeddings_dir_path!r}" +
                 f", transcripts_path={self.transcripts_path!r}" +
                 f", ts_combined_path={self.ts_combined_path!r}" +
-                f", clusters_path={self.clusters_path!r}" +
-                f", intents_path={self.intents_path!r}" +
+                f", clusters_dir_path={self.clusters_dir_path!r}" +
+                f", cluster_raw_dir_path={self.cluster_raw_dir_path!r}" +
+                f", intents_dir_path={self.intents_dir_path!r}" +
                 f", intent_groupings_path={self.intent_groupings_path!r}" +
                 f", entities_path={self.entities_path!r}" +
                 ")")
